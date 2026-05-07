@@ -1222,24 +1222,42 @@ function App() {
       </div>
 
       {equipOpen && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(4,3,1,0.92)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
-             onClick={e=>{ if(e.target===e.currentTarget) setEquipOpen(false); }}>
-          <div style={{ width:"100%", maxWidth:520 }}>
-            <TileBox highlight style={{ padding:20 }}>
-              <div style={{ fontSize:11, color:"#f8e000", textAlign:"center", marginBottom:16 }}>🧍 CHARACTER GEAR</div>
-              <div style={{ display:"flex", gap:16, alignItems:"flex-start" }}>
-                <BodyLayout equip={equipment} selected={selectedSlot} onSelect={setSelectedSlot} cellSize={42} />
-                <div style={{ flex:1, minWidth:0 }}>
-                  <GearDetail selectedSlot={selectedSlot} equipment={equipment} />
-                </div>
+  <div style={{ position:"fixed", inset:0, background:"rgba(4,3,1,0.92)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+       onClick={e=>{ if(e.target===e.currentTarget) setEquipOpen(false); }}>
+    <div style={{ width:"100%", maxWidth:520 }}>
+      <TileBox highlight style={{ padding:20 }}>
+        <div style={{ fontSize:11, color:"#f8e000", textAlign:"center", marginBottom:16 }}>🧍 CHARACTER GEAR</div>
+        
+        <div style={{ display:"flex", gap:16, alignItems:"flex-start" }}>
+          <BodyLayout equip={equipment} selected={selectedSlot} onSelect={setSelectedSlot} cellSize={42} />
+          
+          <div style={{ flex:1, minWidth:0 }}>
+            <GearDetail selectedSlot={selectedSlot} equipment={equipment} />
+            
+            {/* NEW: Full Stats Display */}
+            <div style={{ marginTop:20, paddingTop:12, borderTop:"2px solid #2e2808" }}>
+              <div style={{ fontSize:8, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>CURRENT STATS</div>
+              <div style={{ fontSize:8, color:"#5a4a18", lineHeight:1.9 }}>
+                HP {ep.hp}/{ep.maxHp} &nbsp;·&nbsp; ATK {dmgRange(ep.atkDmg,ep.dieIdx)} &nbsp;·&nbsp; ARM {ep.armor}<br />
+                HIT {ep.hitChance}% &nbsp;·&nbsp; DOD {ep.dodgeChance}% &nbsp;·&nbsp; CRT {ep.critChance}%<br />
+                STR {ep.strength} &nbsp;·&nbsp; DEX {ep.dexterity} &nbsp;·&nbsp; CON {ep.constitution}<br />
+                WIS {ep.wisdom} &nbsp;·&nbsp; CHA {ep.charisma} &nbsp;·&nbsp; INT {ep.intelligence}<br />
+                {ep.poisonResist > 0 && <>☠ RES {ep.poisonResist}% &nbsp;</>}
+                {ep.counterChance > 0 && <>CTR {ep.counterChance}%</>}
+                {ep.armorPierce && " 💥 ARMOR PIERCE"}
+                {ep.doubleStrikeChance > 0 && <> ⚔{ep.tripleStrikeChance>0?"⚔⚔":""} {ep.doubleStrikeChance}%</>}
               </div>
-              <div style={{ marginTop:16 }}>
-                <Btn onClick={()=>setEquipOpen(false)} variant="flee">✕ CLOSE</Btn>
-              </div>
-            </TileBox>
+            </div>
           </div>
         </div>
-      )}
+
+        <div style={{ marginTop:16 }}>
+          <Btn onClick={()=>setEquipOpen(false)} variant="flee">✕ CLOSE</Btn>
+        </div>
+      </TileBox>
+    </div>
+  </div>
+)}
     </>
   );
 }
