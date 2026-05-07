@@ -109,10 +109,7 @@ const DICE_PROGRESSION = (() => {
   const d = (c,s) => ({ count:c, size:s, label:c>1?`${c}D${s}`:`D${s}` });
   const p = [
     d(1,2),d(1,4),d(1,6),d(1,8),d(1,10),
-    d(2,4),d(1,12),d(2,6),d(1,20),
-    d(2,8),d(2,10),
-    d(3,4),d(3,6),d(3,8),d(3,10),
-    d(4,6),d(4,8),d(4,10),
+    d(2,4),d(1,12),d(2,6)
   ];
   for (let n=5; n<=40; n++) for (const s of [4,6,8,10]) p.push(d(n,s));
   return p;
@@ -285,10 +282,10 @@ const getShopCost = (item, p) => Math.max(1,Math.ceil(item.cost*(1-(p.shopDiscou
 
 function describeItem(item, p) {
   if (!item.slot || (p.identify||0)>=50) return item.desc;
-  if (item.stats.maxHp) return "VITAL GEAR · EXACT POWER UNCLEAR";
-  if (item.stats.armor) return "DEFENSIVE GEAR · EXACT POWER UNCLEAR";
-  if (item.stats.atkDmg || item.stats.hitChance || item.stats.critChance) return "COMBAT GEAR · EXACT POWER UNCLEAR";
-  return "ENCHANTED GEAR · EXACT POWER UNCLEAR";
+  if (item.stats.maxHp) return "VITAL GEAR";
+  if (item.stats.armor) return "DEFENSIVE GEAR";
+  if (item.stats.atkDmg || item.stats.hitChance || item.stats.critChance) return "COMBAT GEAR";
+  return "ENCHANTED GEAR";
 }
 
 function pickRandom(pool, n) {
@@ -319,7 +316,7 @@ function pickShopEquipment(avail, n, p, equip) {
 
 const ROOM_TYPES = [
   { id:"small",  icon:"▦", label:"SMALL ROOM", desc:"A TIGHT, CLEAN FIGHT" },
-  { id:"big",    icon:"▣", label:"BIG ROOM",   desc:"MORE GOLD · TOUGHER FOE", enemyMod:e=>({...e,maxHp:e.maxHp+2,hp:e.hp+2,attack:e.attack+1,goldMin:e.goldMin+1,goldMax:e.goldMax+3}) },
+  { id:"big",    icon:"▣", label:"BIG ROOM",   desc:"MORE GOLD · TOUGHER FOE", enemyMod:e=>({...e,maxHp:e.maxHp+2,hp:e.hp+2,goldMin:e.goldMin+1,goldMax:e.goldMax+3}) },
   { id:"bridge", icon:"═", label:"BRIDGE",     desc:"SWIFT FOE · GOOD GOLD", enemyMod:e=>({...e,dodgeChance:(e.dodgeChance||0)+15,goldMax:e.goldMax+2}) },
   { id:"stairs", icon:"⇣", label:"STAIRS",     desc:"DEEPER PATH · BONUS XP", enemyMod:e=>({...e,xp:e.xp+1}) },
   { id:"shrine", icon:"✚", label:"OLD SHRINE", desc:"WEAKER FOE · SMALL GOLD", enemyMod:e=>({...e,hitChance:Math.max(30,e.hitChance-10),goldMin:Math.max(1,e.goldMin-1)}) },
