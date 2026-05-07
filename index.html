@@ -21,7 +21,7 @@ const PLAYER_BASE = {
   name:"LINK", emoji:"🧝",
   hp:4, hitDice:[8],
   armor:1, atkDmg:3, dieIdx:0,
-  hitChance:80, dodgeChance:0, critChance:5,
+  hitChance:90, dodgeChance:0, critChance:5,
   strength:10, dexterity:10, constitution:10,
   wisdom:10, charisma:10, intelligence:10,
   poisonResist:0, awareness:0, identify:0, shopDiscount:0,
@@ -48,7 +48,7 @@ const PERK_POOL = [
 
 const ENEMY_DEFS = {
   MOBLIN:    { emoji:"👺", niche:"FODDER",       maxHp:4,  attack:1, armor:0, hitChance:55, dodgeChance:0,  xp:1, goldMin:1, goldMax:2 },
-  BOKOBLIN:  { emoji:"🐗", niche:"ACCURATE",     maxHp:5,  attack:2, armor:0, hitChance:85, dodgeChance:0,  xp:1, goldMin:1, goldMax:3 },
+  BOKOBLIN:  { emoji:"🐗", niche:"ACCURATE",     maxHp:5,  attack:1, armor:0, hitChance:85, dodgeChance:0,  xp:1, goldMin:1, goldMax:3 },
   GIBDO:     { emoji:"🧟", niche:"TANK",         maxHp:12, attack:1, armor:0, hitChance:50, dodgeChance:0,  xp:2, goldMin:2, goldMax:4 },
   LIZALFOS:  { emoji:"🦎", niche:"EVASIVE",      maxHp:5,  attack:2, armor:0, hitChance:65, dodgeChance:40, xp:2, goldMin:2, goldMax:4 },
   WIZZROBE:  { emoji:"🧙", niche:"GLASS CANNON", maxHp:3,  attack:5, armor:0, hitChance:80, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
