@@ -15,9 +15,12 @@ const { useState, useEffect, useRef } = React;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// HP system: hitDice is the per-level d8 roll history. Level 1 always uses max (8).
+// Effective max HP = floor((sum(hitDice) + conMod * hitDice.length) / 2). CON changes apply retroactively.
 const PLAYER_BASE = {
   name:"LINK", emoji:"🧝",
-  maxHp:6, hp:6, armor:0, atkDmg:3, dieIdx:0,
+  hp:4, hitDice:[8],
+  armor:1, atkDmg:3, dieIdx:0,
   hitChance:80, dodgeChance:0, critChance:5,
   strength:10, dexterity:10, constitution:10,
   wisdom:10, charisma:10, intelligence:10,
@@ -29,17 +32,19 @@ const PLAYER_BASE = {
 const STAT_POOL = [
   { id:"strength",     label:"STRENGTH +2",     desc:"ATTACK +1 · ACCURACY +5%",          apply:p=>({...p,strength:p.strength+2}) },
   { id:"dexterity",    label:"DEXTERITY +2",    desc:"DODGE +5% · CRIT +5%",             apply:p=>({...p,dexterity:p.dexterity+2}) },
-  { id:"constitution", label:"CONSTITUTION +2", desc:"MAX HP +2 · POISON RESIST +5%",    apply:p=>({...p,constitution:p.constitution+2,maxHp:p.maxHp+2,hp:p.hp+2}) },
+  { id:"constitution", label:"CONSTITUTION +2", desc:"BOLSTER MAX HP · +5% POISON RESIST", apply:p=>({...p,constitution:p.constitution+2}) },
   { id:"wisdom",       label:"WISDOM +2",       desc:"ROOM AWARENESS +15%",              apply:p=>({...p,wisdom:p.wisdom+2}) },
   { id:"charisma",     label:"CHARISMA +2",     desc:"SHOP PRICES -5%",                 apply:p=>({...p,charisma:p.charisma+2}) },
   { id:"intelligence", label:"INTELLIGENCE +2", desc:"ITEM IDENTIFY +15%",               apply:p=>({...p,intelligence:p.intelligence+2}) },
 ];
 
-const THRESHOLD_UNLOCKS = {
-  5:  { id:"doubleStrikeChance", label:"★ DOUBLE STRIKE!", desc:"UNLOCKS 25% CHANCE TO ATTACK TWICE",      apply:p=>({...p,doubleStrikeChance:25}) },
-  10: { id:"ironWill",           label:"★ IRON WILL!",     desc:"SURVIVE A KILLING BLOW WITH 1 HP ONCE",   apply:p=>({...p,ironWill:true}) },
-  15: { id:"armorPierce",        label:"★ ARMOR PIERCE!",  desc:"CRITICAL HITS IGNORE ALL ENEMY ARMOR",    apply:p=>({...p,armorPierce:true}) },
-};
+// Perks are offered every 5th level. Each is one-shot — once picked, removed from future offers.
+const PERK_POOL = [
+  { id:"doubleStrikeChance", label:"★ DOUBLE STRIKE",  desc:"25% CHANCE TO ATTACK TWICE",            apply:p=>({...p,doubleStrikeChance:25}) },
+  { id:"ironWill",           label:"★ IRON WILL",      desc:"SURVIVE A KILLING BLOW WITH 1 HP ONCE", apply:p=>({...p,ironWill:true}) },
+  { id:"armorPierce",        label:"★ ARMOR PIERCE",   desc:"CRITS IGNORE ALL ENEMY ARMOR",          apply:p=>({...p,armorPierce:true}) },
+  { id:"dualWield",          label:"★ DUAL WIELD",     desc:"EQUIP TWO LIGHT WEAPONS · BOTH STRIKE", apply:p=>({...p,dualWield:true}) },
+];
 
 const ENEMY_DEFS = {
   MOBLIN:    { emoji:"👺", niche:"FODDER",       maxHp:4,  attack:1, armor:0, hitChance:55, dodgeChance:0,  xp:1, goldMin:1, goldMax:2 },
@@ -103,7 +108,7 @@ const SHOP_CONSUMABLES = [
 const DICE_PROGRESSION = (() => {
   const d = (c,s) => ({ count:c, size:s, label:c>1?`${c}D${s}`:`D${s}` });
   const p = [
-    d(1,2),d(1,4),d(1,6),d(1,8),
+    d(1,2),d(1,4),d(1,6),d(1,8),d(1,10),
     d(2,4),d(1,12),d(2,6),d(1,20),
     d(2,8),d(2,10),
     d(3,4),d(3,6),d(3,8),d(3,10),
@@ -114,10 +119,24 @@ const DICE_PROGRESSION = (() => {
 })();
 
 const EQUIPMENT_DEFS = [
-  // Weapons (slot: weapon)
-  { id:"iron_sword",    slot:"weapon",  emoji:"⚔️", label:"IRON SWORD",     desc:"+2 ATK · +5% CRIT",       stats:{ atkDmg:2, critChance:5 },   cost:20 },
-  { id:"heavy_mace",    slot:"weapon",  emoji:"🔨", label:"HEAVY MACE",     desc:"+3 ATK · -5% HIT",         stats:{ atkDmg:3, hitChance:-5 },   cost:22 },
-  { id:"vampiric_blade",slot:"weapon",  emoji:"🗡️", label:"VAMPIRIC BLADE",  desc:"+1 ATK · HEAL 2 ON CRIT", stats:{ atkDmg:1 },                 cost:28, vampiric:true },
+  // Weapons (slot: weapon). hand: 'light' = light 1H (dual-wieldable), 'one' = 1H (shield-compatible), 'two' = 2H.
+  { id:"dagger",         slot:"weapon", emoji:"🗡️", label:"DAGGER",          desc:"LIGHT 1H · D4 DAMAGE",            dieIdx:1, hand:"light", stats:{},                       cost:8  },
+  { id:"shortsword",     slot:"weapon", emoji:"⚔️", label:"SHORTSWORD",      desc:"LIGHT 1H · D6 DAMAGE",            dieIdx:2, hand:"light", stats:{},                       cost:14 },
+  { id:"longsword",      slot:"weapon", emoji:"🗡️", label:"LONGSWORD",       desc:"1H · D8 DAMAGE",                  dieIdx:3, hand:"one",   stats:{},                       cost:22 },
+  { id:"spear",          slot:"weapon", emoji:"🔱", label:"SPEAR",           desc:"2H · D10 DAMAGE",                 dieIdx:4, hand:"two",   stats:{},                       cost:28 },
+  { id:"greatsword",     slot:"weapon", emoji:"⚔️", label:"GREATSWORD",      desc:"2H · 2D6 DAMAGE",                 dieIdx:7, hand:"two",   stats:{},                       cost:32 },
+  // Rare weapons — uncommon shop drops with a proc or stat rider.
+  { id:"sharp_dagger",   slot:"weapon", emoji:"🗡️", label:"SHARP DAGGER",    desc:"LIGHT 1H · D4 · +1 ATK · +5% HIT",dieIdx:1, hand:"light", stats:{ atkDmg:1, hitChance:5 }, cost:18, rare:true },
+  { id:"keen_short",     slot:"weapon", emoji:"⚔️", label:"KEEN SHORTSWORD", desc:"LIGHT 1H · D6 · +5% CRIT",        dieIdx:2, hand:"light", stats:{ critChance:5 },          cost:24, rare:true },
+  { id:"venom_dagger",   slot:"weapon", emoji:"🐍", label:"VENOM DAGGER",    desc:"LIGHT 1H · D4 · 25% POISON",      dieIdx:1, hand:"light", stats:{},                       cost:22, rare:true, procs:{ poisonChance:25 } },
+  { id:"flame_brand",    slot:"weapon", emoji:"🔥", label:"FLAME BRAND",     desc:"LIGHT 1H · D6 · 25% BURN",        dieIdx:2, hand:"light", stats:{},                       cost:26, rare:true, procs:{ burnChance:25 } },
+  { id:"piercing_lng",   slot:"weapon", emoji:"⚔️", label:"PIERCING LONGSWORD", desc:"1H · D8 · 25% IGNORE ARMOR",   dieIdx:3, hand:"one",   stats:{},                       cost:34, rare:true, procs:{ pierceChance:25 } },
+  { id:"bleeding_spear", slot:"weapon", emoji:"🔱", label:"BLEEDING SPEAR",  desc:"2H · D10 · 25% BLEED",            dieIdx:4, hand:"two",   stats:{},                       cost:38, rare:true, procs:{ bleedChance:25 } },
+  { id:"vampiric_blade", slot:"weapon", emoji:"🩸", label:"VAMPIRIC BLADE",  desc:"LIGHT 1H · D6 · +1 ATK · HEAL 2 ON CRIT",dieIdx:2, hand:"light", stats:{ atkDmg:1 },       cost:48, rare:true, vampiric:true },
+  // Shields (slot: offhand) — only equip with 1H or light main weapon. Mutually exclusive with offhand weapon.
+  { id:"buckler",        slot:"offhand", emoji:"🛡️", label:"BUCKLER",        desc:"+1 ARMOR · +5% DODGE",            stats:{ armor:1, dodgeChance:5 },                       cost:12 },
+  { id:"iron_shield",    slot:"offhand", emoji:"🛡️", label:"IRON SHIELD",    desc:"+2 ARMOR",                        stats:{ armor:2 },                                       cost:18 },
+  { id:"tower_shield",   slot:"offhand", emoji:"🛡️", label:"TOWER SHIELD",   desc:"+3 ARMOR · -5% DODGE",            stats:{ armor:3, dodgeChance:-5 },                       cost:26 },
   // Armor & accessories
   { id:"helmet",        slot:"helmet",  emoji:"🪖", label:"IRON HELMET",    desc:"+2 ARMOR",                 stats:{ armor:2 },                  cost:16 },
   { id:"mask",          slot:"mask",    emoji:"🎭", label:"SHADOW MASK",    desc:"+10% DODGE",               stats:{ dodgeChance:10 },            cost:14 },
@@ -144,6 +163,7 @@ const EQUIPMENT_DEFS = [
 // col 1-5, row 1-8; rings occupy row 8
 const BODY_SLOTS = [
   { key:"weapon",  emoji:"⚔️", col:1, row:2 },
+  { key:"offhand", emoji:"🛡️", col:5, row:2 },
   { key:"mask",    emoji:"🎭", col:2, row:1 },
   { key:"helmet",  emoji:"🪖", col:3, row:1 },
   { key:"glasses", emoji:"🥽", col:4, row:1 },
@@ -194,7 +214,15 @@ function applyEquipment(p, equip) {
   const out = {...p};
   [...BODY_SLOTS.map(s=>equip[s.key]), ...equip.rings]
     .filter(Boolean)
-    .forEach(item => Object.entries(item.stats).forEach(([k,v]) => { out[k]=(out[k]||0)+v; }));
+    .forEach(item => Object.entries(item.stats||{}).forEach(([k,v]) => { out[k]=(out[k]||0)+v; }));
+  // Both swinging weapons go into out.weapons. Offhand only counts if it's a weapon (has dieIdx) — shields just contribute stats.
+  const offIsWeapon = equip.offhand?.dieIdx != null;
+  const weapons = [equip.weapon, offIsWeapon ? equip.offhand : null].filter(Boolean);
+  if (weapons.length > 0) {
+    out.weapons = weapons;
+    out.dieIdx = weapons[0].dieIdx;
+    out.weaponProcs = weapons[0].procs || {};
+  }
   return out;
 }
 
@@ -208,8 +236,13 @@ function applyAbilityStats(p) {
   const wis = abilityMod(out.wisdom);
   const cha = abilityMod(out.charisma);
   const int = abilityMod(out.intelligence);
-  out.maxHp       = Math.max(1,out.maxHp);
-  out.hp          = Math.min(out.hp,out.maxHp);
+  // Max HP = floor((sum of all level rolls + conMod × #levels) / 2), plus any equipment bonus that
+  // applyEquipment already summed onto out.maxHp before we got here. CON applies retroactively.
+  const dice = out.hitDice || [8];
+  const equipBonus = out.maxHp || 0;
+  const baseHp = Math.max(1, Math.floor((dice.reduce((a,b)=>a+b,0) + con*dice.length) / 2));
+  out.maxHp       = baseHp + equipBonus;
+  out.hp          = Math.min(out.hp, out.maxHp);
   out.atkDmg      = Math.max(0,out.atkDmg + str);
   out.hitChance   = clamp(out.hitChance + str*5,5,120);
   out.dodgeChance = clamp(out.dodgeChance + dex*5,0,75);
@@ -225,8 +258,28 @@ function getEffectivePlayer(p, equip, buffs=[]) {
   return applyBuffs(applyAbilityStats(applyEquipment(p,equip)),buffs);
 }
 
+// Weapons are always replaceable (buying a new one supplants the old). Shields too. Other slots only offer once.
 const getAvailableEquipment = equip =>
-  EQUIPMENT_DEFS.filter(item => item.slot==='ring' ? equip.rings.length<5 : !equip[item.slot]);
+  EQUIPMENT_DEFS.filter(item => {
+    if (item.slot==='ring')    return equip.rings.length<5;
+    if (item.slot==='weapon')  return equip.weapon?.id !== item.id;
+    if (item.slot==='offhand') return equip.offhand?.id !== item.id;
+    return !equip[item.slot];
+  });
+
+// Runtime equip validation. Used to grey out shop buttons that would be illegal.
+function canEquipItem(item, equip, p) {
+  if (item.slot === 'offhand') {
+    // Two-handed main weapon blocks ANY offhand item (shield or weapon).
+    if (equip.weapon?.hand === 'two') return false;
+    // Offhand light weapons require dual-wield perk + light main weapon.
+    if (item.dieIdx != null) {
+      if (!p?.dualWield) return false;
+      if (equip.weapon?.hand !== 'light') return false;
+    }
+  }
+  return true;
+}
 
 const getShopCost = (item, p) => Math.max(1,Math.ceil(item.cost*(1-(p.shopDiscount||0)/100)));
 
@@ -244,6 +297,26 @@ function pickRandom(pool, n) {
   return out;
 }
 
+// Shop equipment is biased toward common items: each pick has a 25% chance to come
+// from the rare pool when both pools are non-empty. Falls back gracefully when one is empty.
+// If the player has dual-wield + a light main weapon equipped, light weapon picks may be
+// re-tagged as offhand variants so they slot into the offhand instead of replacing the main.
+function pickShopEquipment(avail, n, p, equip) {
+  const src=[...avail], out=[];
+  const canDual = p?.dualWield && equip?.weapon?.hand === 'light';
+  while (out.length<n && src.length) {
+    const common=src.filter(i=>!i.rare), rare=src.filter(i=>i.rare);
+    const pool = (rare.length && common.length) ? (pct(25)?rare:common) : (common.length?common:rare);
+    let item = pool[Math.floor(Math.random()*pool.length)];
+    src.splice(src.indexOf(item),1);
+    if (canDual && item.slot === 'weapon' && item.hand === 'light' && pct(40)) {
+      item = {...item, slot:'offhand', label: item.label + ' (OFF)', id: item.id + '_off'};
+    }
+    out.push(item);
+  }
+  return out;
+}
+
 const ROOM_TYPES = [
   { id:"small",  icon:"▦", label:"SMALL ROOM", desc:"A TIGHT, CLEAN FIGHT" },
   { id:"big",    icon:"▣", label:"BIG ROOM",   desc:"MORE GOLD · TOUGHER FOE", enemyMod:e=>({...e,maxHp:e.maxHp+2,hp:e.hp+2,attack:e.attack+1,goldMin:e.goldMin+1,goldMax:e.goldMax+3}) },
@@ -252,10 +325,19 @@ const ROOM_TYPES = [
   { id:"shrine", icon:"✚", label:"OLD SHRINE", desc:"WEAKER FOE · SMALL GOLD", enemyMod:e=>({...e,hitChance:Math.max(30,e.hitChance-10),goldMin:Math.max(1,e.goldMin-1)}) },
 ];
 
-function makeRoomChoices(pos, p, revealAll=false) {
-  if (pos>=WAVE_LENGTH-1) return [{ id:"boss", icon:"▰", label:"BOSS DOOR", desc:"THE WAVE GUARDIAN WAITS", known:true, isBoss:true }];
-  const awareness = revealAll ? 95 : (p.awareness||0);
-  return pickRandom(ROOM_TYPES,3).map(room=>({ ...room, known:pct(35+awareness) }));
+function makeRoomChoices(pos, p, revealAll=false, level=1, waveNumber=1) {
+  const awareness = revealAll ? 100 : (p.awareness||0);
+  const enemyKnown = () => revealAll || pct(awareness);
+  if (pos>=WAVE_LENGTH-1) {
+    return [{ id:"boss", icon:"▰", label:"BOSS DOOR", desc:"THE WAVE GUARDIAN WAITS",
+              known:true, isBoss:true, enemy:pickBoss(waveNumber,level), enemyKnown:enemyKnown() }];
+  }
+  return pickRandom(ROOM_TYPES,3).map(room=>({
+    ...room,
+    enemy:      pickEnemy(level),
+    known:      revealAll || pct(35+awareness),
+    enemyKnown: enemyKnown(),
+  }));
 }
 
 function applyRoomToEnemy(e, room) {
@@ -306,43 +388,63 @@ function pickBoss(waveNumber, level) {
 
 function playerAttack(p, e, verbose=false) {
   const results=[];
-  const doSwing = () => {
+  // Each swinging weapon contributes one swing using its own die and procs. Falls back to fists if no weapon equipped.
+  const weapons = (p.weapons && p.weapons.length) ? p.weapons : [{ dieIdx:p.dieIdx, procs:{} }];
+  const bleedMult = (e.bleed||0) > 0 ? 1.5 : 1;
+  const amplify = dmg => bleedMult>1 ? Math.ceil(dmg*bleedMult) : dmg;
+  let didPoison=false, didBurn=false, didBleed=false;
+  const doSwing = (weapon) => {
+    const procs = weapon.procs || {};
     const {rolled,hit} = d20Hit(p.hitChance-e.dodgeChance);
     const wouldCrit    = rolled >= 20-p.critChance/5;
     if (!hit && !wouldCrit) {
       results.push({type:"miss", text:`${rolled}! ${e.dodgeChance>0?"DODGE!":"MISS!"}`});
       return null;
     }
-    const r1 = rollDiceV(p.dieIdx);
+    const procPierce = procs.pierceChance > 0 && pct(procs.pierceChance);
+    const r1 = rollDiceV(weapon.dieIdx);
+    let dmg;
     if (wouldCrit && hit) {
       if (e.immuneToCrit) {
-        const dmg = Math.max(0,p.atkDmg+r1.total-e.armor);
-        results.push({type:"player", text:`${rolled}! CRIT BLOCKED!${verbose?` ${r1.text}`:""} ${dmg} DMG`});
-        return dmg;
+        const armorUsed = procPierce ? 0 : e.armor;
+        dmg = amplify(Math.max(0,p.atkDmg+r1.total-armorUsed));
+        results.push({type:"player", text:`${rolled}! CRIT BLOCKED!${procPierce&&e.armor>0?" PIERCED!":""}${verbose?` ${r1.text}`:""} ${dmg} DMG`});
+      } else {
+        const armorUsed = (procPierce || p.armorPierce) ? 0 : e.armor;
+        const r2  = rollDiceV(weapon.dieIdx);
+        const pierced = (procPierce || p.armorPierce) && e.armor>0;
+        dmg = amplify(Math.max(0,p.atkDmg+r1.total+r2.total-armorUsed));
+        results.push({type:"crit", text:`${rolled}! ★ CRIT!${pierced?" PIERCED!":""}${verbose?` ${r1.text}+${r2.text}`:""} ${dmg} DMG!`});
       }
-      const armorUsed = p.armorPierce ? 0 : e.armor;
-      const r2  = rollDiceV(p.dieIdx);
-      const dmg = Math.max(0,p.atkDmg+r1.total+r2.total-armorUsed);
-      results.push({type:"crit", text:`${rolled}! ★ CRIT!${p.armorPierce&&e.armor>0?" PIERCED!":""}${verbose?` ${r1.text}+${r2.text}`:""} ${dmg} DMG!`});
-      return dmg;
+    } else {
+      const armorUsed = procPierce ? 0 : e.armor;
+      dmg = amplify(Math.max(0,p.atkDmg+r1.total-armorUsed));
+      results.push({type:"player", text:`${rolled}! ${wouldCrit?"AUTO-HIT! ":"HIT! "}${verbose?`${r1.text} `:""}${dmg} DMG${dmg===0?" (BLOCKED)":procPierce&&e.armor>0?" PIERCED!":""}`});
     }
-    const dmg = Math.max(0,p.atkDmg+r1.total-e.armor);
-    results.push({type:"player", text:`${rolled}! ${wouldCrit?"AUTO-HIT! ":"HIT! "}${verbose?`${r1.text} `:""}${dmg} DMG${dmg===0?" (BLOCKED)":""}`});
+    if (dmg>0) {
+      if (procs.poisonChance && pct(procs.poisonChance)) didPoison=true;
+      if (procs.burnChance   && pct(procs.burnChance))   didBurn=true;
+      if (procs.bleedChance  && pct(procs.bleedChance))  didBleed=true;
+    }
     return dmg;
   };
-  const dmg1 = doSwing()||0;
+  let total = 0;
+  weapons.forEach((w,i)=>{
+    if (i===1) results.push({type:"player", text:"⚔ OFFHAND STRIKE!"});
+    total += doSwing(w) || 0;
+  });
+  // Double/triple strike adds extra swings of the main weapon on top.
   const dbl  = p.doubleStrikeChance||0;
   const tpl  = p.tripleStrikeChance||0;
-  let dmg2=0, dmg3=0;
   if (dbl>=100 || (dbl>0&&pct(dbl))) {
     results.push({type:"player", text:tpl>0?"⚔⚔⚔ DOUBLE STRIKE!":"⚔⚔ DOUBLE STRIKE!"});
-    dmg2 = doSwing()||0;
+    total += doSwing(weapons[0]) || 0;
     if (tpl>0 && pct(tpl)) {
       results.push({type:"player", text:"⚔⚔⚔ TRIPLE STRIKE!"});
-      dmg3 = doSwing()||0;
+      total += doSwing(weapons[0]) || 0;
     }
   }
-  return { total:dmg1+dmg2+dmg3, results };
+  return { total, results, didPoison, didBurn, didBleed };
 }
 
 function enemyAttack(p, e, verbose=false) {
@@ -388,7 +490,14 @@ function Hearts({ hp, maxHp }) {
     <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
       {Array.from({length:Math.ceil(maxHp/2)}).map((_,i) => {
         const full=hp>=i*2+2, half=!full&&hp>=i*2+1;
-        return <span key={i} style={{ fontSize:18, lineHeight:1 }}>{full?"❤️":half?"🖤":"🤍"}</span>;
+        if (full) return <span key={i} style={{ fontSize:18, lineHeight:1 }}>❤️</span>;
+        if (half) return (
+          <span key={i} style={{ fontSize:18, lineHeight:1, position:"relative", display:"inline-block" }}>
+            🤍
+            <span aria-hidden="true" style={{ position:"absolute", left:0, top:0, clipPath:"inset(0 50% 0 0)", pointerEvents:"none" }}>❤️</span>
+          </span>
+        );
+        return <span key={i} style={{ fontSize:18, lineHeight:1 }}>🤍</span>;
       })}
     </div>
   );
@@ -432,7 +541,7 @@ function EquipDisplay({ equip }) {
       {BODY_SLOTS.map(({key,emoji}) => (
         <span key={key} title={equip[key]?.label||key.toUpperCase()}
               style={{ fontSize:13, opacity:equip[key]?1:0.18, filter:equip[key]?"none":"grayscale(1)" }}>
-          {emoji}
+          {equip[key]?.emoji||emoji}
         </span>
       ))}
       {[0,1,2,3,4].map(i => (
@@ -458,7 +567,7 @@ function BodyLayout({ equip, selected, onSelect, cellSize=36 }) {
   );
   return (
     <div style={{ display:"grid", gridTemplateColumns:`repeat(5,${cellSize}px)`, gridTemplateRows:`repeat(8,${cellSize}px)`, gap:3, flexShrink:0 }}>
-      {BODY_SLOTS.map(s=>cell(s.key,s.emoji,s.col,s.row,!!equip[s.key]))}
+      {BODY_SLOTS.map(s=>cell(s.key,equip[s.key]?.emoji||s.emoji,s.col,s.row,!!equip[s.key]))}
       {[0,1,2,3,4].map(i=>cell(`ring:${i}`,"💍",i+1,8,!!equip.rings[i]))}
     </div>
   );
@@ -484,8 +593,9 @@ function DungeonMap({ wavePos, waveNumber, roomChoices }) {
       </div>
       <div style={{ display:"flex", justifyContent:"center", gap:6, marginTop:10, flexWrap:"wrap" }}>
         {roomChoices.map(room=>(
-          <span key={room.id} style={{ minWidth:58, textAlign:"center", fontSize:7, color:room.isBoss?"#e05050":"#80b8e8", border:"1px solid #2e2808", background:"#080e08", padding:"4px 6px" }}>
+          <span key={room.id} style={{ minWidth:58, textAlign:"center", fontSize:7, color:room.isBoss?"#e05050":"#80b8e8", border:"1px solid #2e2808", background:"#080e08", padding:"4px 6px", lineHeight:1.6 }}>
             {room.icon} {room.label.split(" ")[0]}
+            {room.enemyKnown && room.enemy && <><br /><span style={{ color:"#e08020", fontSize:9 }}>{room.enemy.emoji}</span></>}
           </span>
         ))}
       </div>
@@ -495,7 +605,7 @@ function DungeonMap({ wavePos, waveNumber, roomChoices }) {
 
 function GearDetail({ selectedSlot, equipment }) {
   if (!selectedSlot) return (
-    <div style={{ color:"#3a2e0a", fontSize:8, lineHeight:2.4, marginTop:8 }}>← CLICK A SLOT<br />TO INSPECT</div>
+    <div style={{ color:"#3a2e0a", fontSize:10, lineHeight:2, marginTop:8 }}>← CLICK A SLOT<br />TO INSPECT</div>
   );
   const isRing  = selectedSlot.startsWith("ring:");
   const ringIdx = isRing ? parseInt(selectedSlot.split(":")[1]) : null;
@@ -504,25 +614,25 @@ function GearDetail({ selectedSlot, equipment }) {
   const label   = isRing ? `RING SLOT ${ringIdx+1}` : selectedSlot.toUpperCase();
   return (
     <>
-      <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:10 }}>
+      <div style={{ fontSize:9, color:"#806030", letterSpacing:"0.1em", marginBottom:12 }}>
         {slotDef?.emoji??"💍"} {label}
       </div>
       {item ? (
         <>
-          <div style={{ fontSize:10, color:"#c080f8", marginBottom:6 }}>{item.label}</div>
-          <div style={{ fontSize:7, color:"#503870", lineHeight:2.2, marginBottom:10 }}>{item.desc}</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+          <div style={{ fontSize:13, color:"#c080f8", marginBottom:10, lineHeight:1.5 }}>{item.label}</div>
+          <div style={{ fontSize:10, color:"#9070b0", lineHeight:1.8, marginBottom:14 }}>{item.desc}</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
             {Object.entries(item.stats).map(([k,v]) => {
               const bad = v<0 || k==='greedPenalty';
-              return <div key={k} style={{ fontSize:8, color:bad?"#e08020":"#50d850" }}>{v>0?"+":""}{v} {STAT_LABEL[k]||k.toUpperCase()}</div>;
+              return <div key={k} style={{ fontSize:11, color:bad?"#e08020":"#50d850" }}>{v>0?"+":""}{v} {STAT_LABEL[k]||k.toUpperCase()}</div>;
             })}
           </div>
-          {item.vampiric && <div style={{ fontSize:7, color:"#e040e0", marginTop:6 }}>🩸 HEAL 2 HP ON CRIT</div>}
-          <div style={{ fontSize:7, color:"#806010", marginTop:10 }}>COST {item.cost}💰</div>
+          {item.vampiric && <div style={{ fontSize:10, color:"#e040e0", marginTop:10 }}>🩸 HEAL 2 HP ON CRIT</div>}
+          <div style={{ fontSize:10, color:"#a07020", marginTop:14 }}>COST {item.cost}💰</div>
         </>
       ) : (
-        <div style={{ fontSize:8, color:"#3a2e0a", marginTop:16, lineHeight:2.4 }}>
-          — EMPTY —<br /><span style={{ fontSize:7, color:"#2a2008" }}>VISIT THE SHOP<br />AFTER A BOSS</span>
+        <div style={{ fontSize:11, color:"#5a4018", marginTop:18, lineHeight:2 }}>
+          — EMPTY —<br /><span style={{ fontSize:9, color:"#3a2e0a" }}>VISIT THE SHOP<br />AFTER A BOSS</span>
         </div>
       )}
     </>
@@ -573,10 +683,10 @@ function App() {
   const [shaking,      setShaking]      = useState(null);
   const [levelUpOpts,  setLevelUpOpts]  = useState([]);
   const [pickedStats,  setPickedStats]  = useState([]);
-  const [thresholdMsg, setThresholdMsg] = useState(null);
+  const [perkOpts,     setPerkOpts]     = useState([]);
   const [wavePos,      setWavePos]      = useState(0);
   const [waveNumber,   setWaveNumber]   = useState(1);
-  const [roomChoices,  setRoomChoices]  = useState(()=>makeRoomChoices(0,applyAbilityStats(PLAYER_BASE),false));
+  const [roomChoices,  setRoomChoices]  = useState(()=>makeRoomChoices(0,applyAbilityStats(PLAYER_BASE),false,1,1));
   const [shopItems,    setShopItems]    = useState([]);
   const [equipment,    setEquipment]    = useState({...EMPTY_EQUIP});
   const [inventory,    setInventory]    = useState([]);
@@ -597,7 +707,7 @@ function App() {
 
   const ep         = getEffectivePlayer(player,equipment,tempBuffs);
   const idlePlayer = getEffectivePlayer(player,equipment);
-  const roomPlayer = devMode ? {...idlePlayer,awareness:95,wisdom:30} : idlePlayer;
+  const roomPlayer = devMode ? {...idlePlayer,awareness:95,wisdom:30,intelligence:30,identify:95} : idlePlayer;
   const XP_NEEDED = level*3;
 
   useEffect(()=>{ if(logRef.current) logRef.current.scrollTop=logRef.current.scrollHeight; },[log]);
@@ -618,22 +728,26 @@ function App() {
   }
 
   function triggerLevelUp(newLevel, currentPlayer) {
-    const threshold = THRESHOLD_UNLOCKS[newLevel];
     setLevelUpOpts(STAT_POOL);
     setPickedStats([]);
-    if (threshold && !currentPlayer[threshold.id]) { setThresholdMsg(threshold); setPhase("threshold"); }
-    else setPhase("levelup");
+    // Every 5th level (capped at 20), offer a perk pick from any not-yet-taken perks.
+    if (newLevel % 5 === 0 && newLevel <= 20) {
+      const remaining = PERK_POOL.filter(p => !currentPlayer[p.id]);
+      if (remaining.length > 0) { setPerkOpts(remaining); setPhase("perk"); return; }
+    }
+    setPhase("levelup");
   }
 
   function pickStat(stat) {
     const next=[...pickedStats,stat];
     setPickedStats(next);
-    if (next.length>=1) { const updated=stat.apply({...player}); setPlayer(updated); setRoomChoices(makeRoomChoices(wavePos,applyAbilityStats(updated),devMode)); setPhase("win"); }
+    if (next.length>=1) { const updated=stat.apply({...player}); setPlayer(updated); setRoomChoices(makeRoomChoices(wavePos,applyAbilityStats(updated),devMode,level,waveNumber)); setPhase("win"); }
   }
 
-  function confirmThreshold() {
-    const t=THRESHOLD_UNLOCKS[level];
-    if (t) setPlayer(p=>t.apply(p));
+  function pickPerk(perk) {
+    setPlayer(p => perk.apply({...p}));
+    setPerkOpts([]);
+    addLog(`${perk.label} UNLOCKED!`, "level");
     setPhase("levelup");
   }
 
@@ -647,7 +761,7 @@ function App() {
   function startBattle(room) {
     const newPos = wavePos+1;
     const isBoss = !!room?.isBoss || newPos>=WAVE_LENGTH;
-    const baseEnemy = isBoss ? pickBoss(waveNumber,level) : pickEnemy(level);
+    const baseEnemy = room?.enemy ? room.enemy : (isBoss ? pickBoss(waveNumber,level) : pickEnemy(level));
     const e = {...applyRoomToEnemy(baseEnemy,room), roomPos:newPos, roomLabel:room?.label};
     setWavePos(newPos);
     setEnemy(e); setPhase("player"); setIronUsed(false);
@@ -668,11 +782,11 @@ function App() {
       }
       return;
     }
-    const {total,results} = playerAttack(ep,enemy,devMode);
+    const {total,results,didPoison,didBurn,didBleed} = playerAttack(ep,enemy,devMode);
 
     // Vampiric blade: heal on crit
     let effectivePlayer = ep;
-    if (equipment.weapon?.vampiric && results.some(r=>r.type==='crit')) {
+    if ((equipment.weapon?.vampiric || equipment.offhand?.vampiric) && results.some(r=>r.type==='crit')) {
       const heal=2;
       effectivePlayer = {...ep, hp:Math.min(ep.hp+heal, ep.maxHp)};
       setPlayer(p=>({...p, hp:Math.min(p.hp+heal, ep.maxHp)}));
@@ -689,6 +803,13 @@ function App() {
 
     const newHp=enemy.hp-total;
     let next={...enemy,hp:Math.max(0,newHp)};
+
+    // Weapon procs only land if the enemy survives the swing.
+    if (next.hp>0) {
+      if (didPoison) { next={...next, poison:3}; addLog(enemy.poison>0?"☠ ENEMY POISON REFRESHED!":"☠ ENEMY POISONED! 3 TURNS!","level"); }
+      if (didBurn)   { next={...next, burn:3};   addLog(enemy.burn>0  ?"🔥 ENEMY BURN REFRESHED!":"🔥 ENEMY BURNING! 3 TURNS!","level"); }
+      if (didBleed)  { next={...next, bleed:3};  addLog(enemy.bleed>0 ?"🩸 ENEMY BLEED REFRESHED!":"🩸 ENEMY BLEEDING! 3 TURNS! (+50% DMG)","level"); }
+    }
 
     // Berserker enrages at half HP
     if (enemy.enragesWhenLow && !enemy.enraged && next.hp>0 && next.hp<=Math.ceil(enemy.maxHp/2)) {
@@ -719,6 +840,26 @@ function App() {
     setPhase("enemy");
     setTimeout(()=>{
       let curP=p;
+      let curE=e;
+
+      // Enemy status ticks (poison/burn drain HP; bleed only decrements — its damage bonus is applied on the player's swing)
+      if ((curE.poison||0)>0) {
+        const newHp=curE.hp-1, left=curE.poison-1;
+        addLog(`☠ ${curE.name} POISON! 1 DMG${left>0?` (${left} LEFT)`:" CURED!"}`,"level");
+        if (newHp<=0) { resolveVictory({...curE,hp:0,poison:0}); return; }
+        curE={...curE,hp:newHp,poison:left}; setEnemy(curE);
+      }
+      if ((curE.burn||0)>0) {
+        const newHp=curE.hp-2, left=curE.burn-1;
+        addLog(`🔥 ${curE.name} BURN! 2 DMG${left>0?` (${left} LEFT)`:" FADED!"}`,"level");
+        if (newHp<=0) { resolveVictory({...curE,hp:0,burn:0}); return; }
+        curE={...curE,hp:newHp,burn:left}; setEnemy(curE);
+      }
+      if ((curE.bleed||0)>0) {
+        const left=curE.bleed-1;
+        curE={...curE,bleed:left}; setEnemy(curE);
+        if (left===0) addLog(`🩸 ${curE.name} BLEED FADED.`,"miss");
+      }
 
       // Poison tick
       if (poison>0) {
@@ -748,13 +889,13 @@ function App() {
       }
 
       // Archer flee check (before enemy attacks)
-      if (e.fleesWhenLow && e.hp<=Math.ceil(e.maxHp*0.3) && pct(35)) {
-        addLog(`${e.name} FLEES! HALF REWARD.`, "warn");
-        resolveVictory({...e, xp:Math.ceil(e.xp/2), goldMin:1, goldMax:Math.ceil(e.goldMax/2)});
+      if (curE.fleesWhenLow && curE.hp<=Math.ceil(curE.maxHp*0.3) && pct(35)) {
+        addLog(`${curE.name} FLEES! HALF REWARD.`, "warn");
+        resolveVictory({...curE, xp:Math.ceil(curE.xp/2), goldMin:1, goldMax:Math.ceil(curE.goldMax/2)});
         return;
       }
 
-      const {dmgToPlayer:rawDmg, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun} = enemyAttack(curP,e,devMode);
+      const {dmgToPlayer:rawDmg, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun} = enemyAttack(curP,curE,devMode);
       const dmgToPlayer = devMode ? 0 : (bleed>0 ? Math.ceil(rawDmg*1.5) : rawDmg);
 
       const r0=results[0];
@@ -775,10 +916,10 @@ function App() {
 
       if (dmgToPlayer>0) setGameStats(s=>({...s,biggestHitTaken:Math.max(s.biggestHitTaken,dmgToPlayer)}));
 
-      const newEnemyHp=e.hp-counterDmg;
-      if (counterDmg>0) setEnemy({...e,hp:Math.max(0,newEnemyHp)});
-      if (newEnemyHp<=0&&counterDmg>0) { resolveVictory({...e,hp:0}); return; }
-      const aliveEnemy = counterDmg>0 ? {...e,hp:Math.max(0,newEnemyHp)} : e;
+      const newEnemyHp=curE.hp-counterDmg;
+      if (counterDmg>0) setEnemy({...curE,hp:Math.max(0,newEnemyHp)});
+      if (newEnemyHp<=0&&counterDmg>0) { resolveVictory({...curE,hp:0}); return; }
+      const aliveEnemy = counterDmg>0 ? {...curE,hp:Math.max(0,newEnemyHp)} : curE;
 
       let newHp=curP.hp-dmgToPlayer;
       if (newHp<=0&&curP.ironWill&&!ironUsed) { newHp=1; setIronUsed(true); addLog("IRON WILL! SURVIVED WITH 1 HP!","level"); }
@@ -807,22 +948,26 @@ function App() {
     let newXp=xp+xpGained, newLevel=level, nextPlayer={...player}, didLevel=false;
     if (newXp>=XP_NEEDED) {
       newXp-=XP_NEEDED; newLevel++; didLevel=true;
+      // Roll the new level's hit die (d8) and append. Combined with CON mod × levels via applyAbilityStats.
+      const hpRoll = roll(8);
+      nextPlayer = {...nextPlayer, hitDice:[...(nextPlayer.hitDice||[8]), hpRoll]};
       const effectiveMax=getEffectivePlayer(nextPlayer,equipment).maxHp;
       const heal=Math.ceil(effectiveMax/2);
       nextPlayer={...nextPlayer,hp:Math.min(nextPlayer.hp+heal,effectiveMax)};
       setPlayer(nextPlayer);
-      addLog(`★ LEVEL UP! LV ${newLevel}! +${heal} HP! ★`,"level");
+      addLog(`★ LEVEL UP! LV ${newLevel}! HD8 ROLLED ${hpRoll} · +${heal} HP! ★`,"level");
     }
     setXp(newXp); setLevel(newLevel);
     setTimeout(()=>{
       addLog(`${defeatedEnemy.name} DEFEATED! +${goldEarned} 💰`,"gold");
       const nextRoomPos = defeatedEnemy.isBoss ? 0 : (defeatedEnemy.roomPos??wavePos);
+      const nextWaveNum = defeatedEnemy.isBoss ? waveNumber+1 : waveNumber;
       if (defeatedEnemy.isBoss) { setWavePos(0); setWaveNumber(n=>n+1); }
-      setRoomChoices(makeRoomChoices(nextRoomPos,getEffectivePlayer(nextPlayer,equipment),devMode));
+      setRoomChoices(makeRoomChoices(nextRoomPos,getEffectivePlayer(nextPlayer,equipment),devMode,newLevel,nextWaveNum));
       if (newLevel>=21) { saveHighScore(gold+goldEarned); setEnemy(null); setPhase("gamewon"); return; }
       if (defeatedEnemy.isBoss) {
         const avail=getAvailableEquipment(equipment);
-        setShopItems([...pickRandom(SHOP_CONSUMABLES,3),...pickRandom(avail,Math.min(2,avail.length))]);
+        setShopItems([...pickRandom(SHOP_CONSUMABLES,3),...pickShopEquipment(avail,Math.min(2,avail.length),idlePlayer,equipment)]);
         setShopUnlocked(true);
       }
       didLevel ? triggerLevelUp(newLevel,nextPlayer) : setPhase("win");
@@ -832,9 +977,18 @@ function App() {
   function buyItem(item) {
     const cost = getShopCost(item,idlePlayer);
     if (gold<cost) return;
+    if (!canEquipItem(item, equipment, idlePlayer)) return;
     setGold(g=>g-cost);
     if (item.slot) {
-      setEquipment(eq=>item.slot==='ring'?{...eq,rings:[...eq.rings,item]}:{...eq,[item.slot]:item});
+      // Equipping a 2H weapon clears the offhand slot (shield or off-weapon).
+      const clearOffhand = item.slot==='weapon' && item.hand==='two' && equipment.offhand;
+      if (clearOffhand) addLog(`⚔ ${equipment.offhand.label} REMOVED — TWO-HANDED WEAPON EQUIPPED.`,"warn");
+      setEquipment(eq=>{
+        if (item.slot==='ring') return {...eq,rings:[...eq.rings,item]};
+        const next = {...eq,[item.slot]:item};
+        if (item.slot==='weapon' && item.hand==='two') next.offhand = null;
+        return next;
+      });
       setShopItems(prev=>prev.filter(i=>i.id!==item.id&&(item.slot==='ring'||i.slot!==item.slot)));
     } else {
       setInventory(inv=>[...inv,item]);
@@ -849,13 +1003,13 @@ function App() {
     setPickedStats([]); setLevelUpOpts([]); setShopItems([]);
     setInventory([]); setTempBuffs([]); setShopUnlocked(false);
     setEquipment({...EMPTY_EQUIP});
-    setWavePos(0); setWaveNumber(1); setRoomChoices(makeRoomChoices(0,applyAbilityStats(PLAYER_BASE),false)); setSelectingItem(false);
+    setWavePos(0); setWaveNumber(1); setRoomChoices(makeRoomChoices(0,applyAbilityStats(PLAYER_BASE),false,1,1)); setSelectingItem(false);
     setArenaAnim({player:'idle',enemy:'idle'});
     setPoison(0); setBurn(0); setBleed(0); setStun(0);
     setGameStats({biggestHit:0,biggestHitTaken:0,killCounts:{},itemsUsed:{}});
   }
 
-  const inBattle   = ["player","enemy","win","lose","levelup","threshold"].includes(phase);
+  const inBattle   = ["player","enemy","win","lose","levelup","perk"].includes(phase);
   const nextBossIn = WAVE_LENGTH-wavePos;
   const pa=arenaAnim.player, ea=arenaAnim.enemy;
 
@@ -886,7 +1040,7 @@ function App() {
 
         <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
           <div style={{ color:"#f8e000", fontSize:15, letterSpacing:"0.12em", textShadow:"2px 2px #000, 0 0 18px rgba(248,224,0,0.35)" }}>✦ DUNGEON QUEST ✦</div>
-          <button onClick={()=>setDevMode(d=>{ const next=!d; setRoomChoices(makeRoomChoices(wavePos,idlePlayer,next)); return next; })}
+          <button onClick={()=>setDevMode(d=>{ const next=!d; setRoomChoices(makeRoomChoices(wavePos,idlePlayer,next,level,waveNumber)); return next; })}
                   style={{ fontFamily:"'Press Start 2P', monospace", fontSize:7, padding:"4px 8px", background:devMode?"#00101a":"#0a0a0a", border:`2px solid ${devMode?"#00c8f8":"#3a3010"}`, color:devMode?"#00c8f8":"#3a3010", cursor:"pointer", letterSpacing:"0.04em" }}>
             {devMode?"★ DEV":"DEV"}
           </button>
@@ -898,6 +1052,7 @@ function App() {
               {player.doubleStrikeChance>0 && <span>  ·  {player.tripleStrikeChance>0?`⚔⚔⚔ ${player.tripleStrikeChance}%`:player.doubleStrikeChance>=100?"⚔⚔ 100%":`⚔⚔ ${player.doubleStrikeChance}%`}</span>}
               {player.ironWill    && "  ·  🛡"}
               {player.armorPierce && "  ·  💥"}
+              {player.dualWield   && "  ·  ⚔⚔"}
               {poison>0           && <span style={{color:"#80d050"}}>  ·  ☠×{poison}</span>}
               {burn>0             && <span style={{color:"#e08020"}}>  ·  🔥×{burn}</span>}
               {bleed>0            && <span style={{color:"#e04040"}}>  ·  🩸×{bleed}</span>}
@@ -976,6 +1131,9 @@ function App() {
                       {enemy.burnsOnHit   && <span style={{color:"#e08020"}}> 🔥</span>}
                       {enemy.stunsOnHit   && <span style={{color:"#80d0f8"}}> 💫</span>}
                       {enemy.enraged      && <span style={{color:"#e04040"}}> ⚡</span>}
+                      {enemy.poison>0     && <span style={{color:"#80d050"}}> ☠</span>}
+                      {enemy.burn>0       && <span style={{color:"#e08020"}}> 🔥</span>}
+                      {enemy.bleed>0      && <span style={{color:"#e04040"}}> 🩸</span>}
                     </div>
                   </div>
                 </div>
@@ -1029,6 +1187,9 @@ function App() {
                       HIT {enemy.hitChance}%{enemy.dodgeChance>0&&<> · DOD {enemy.dodgeChance}%</>}
                       <span style={{color:"#a08020"}}> · 💰{enemy.goldMin}-{enemy.goldMax}</span>
                     </div>
+                    {enemy.poison>0 && <div style={{ fontSize:7, color:"#80d050", marginTop:6 }}>☠ POISONED {enemy.poison} TURNS</div>}
+                    {enemy.burn>0   && <div style={{ fontSize:7, color:"#e08020", marginTop:2 }}>🔥 BURNING {enemy.burn} TURNS</div>}
+                    {enemy.bleed>0  && <div style={{ fontSize:7, color:"#e04040", marginTop:2 }}>🩸 BLEEDING {enemy.bleed} TURNS · TAKES +50% DMG</div>}
                   </div>
                 </TileBox>
               </div>
@@ -1039,11 +1200,17 @@ function App() {
                 </div>
               </TileBox>
 
-              {phase==="threshold" && thresholdMsg && (
-                <TileBox highlight style={{ textAlign:"center", padding:24 }}>
-                  <div style={{ color:"#f8e000", fontSize:11, marginBottom:10, animation:"blink 0.8s infinite" }}>{thresholdMsg.label}</div>
-                  <div style={{ color:"#80b8e8", fontSize:9, lineHeight:2, marginBottom:20 }}>{thresholdMsg.desc}</div>
-                  <Btn onClick={confirmThreshold} variant="gold">▶ CONTINUE</Btn>
+              {phase==="perk" && perkOpts.length>0 && (
+                <TileBox highlight style={{ padding:18 }}>
+                  <div style={{ color:"#f8e000", fontSize:11, marginBottom:6, animation:"blink 0.8s infinite" }}>★ MILESTONE PERK ★</div>
+                  <div style={{ color:"#80b8e8", fontSize:9, marginBottom:14, lineHeight:1.8 }}>PICK ONE — IT'S YOURS FOR THE RUN.</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {perkOpts.map(opt=>(
+                      <Btn key={opt.id} onClick={()=>pickPerk(opt)} variant="gold">
+                        ▶ {opt.label}<br /><span style={{color:"#806010",fontSize:8}}>{opt.desc}</span>
+                      </Btn>
+                    ))}
+                  </div>
                 </TileBox>
               )}
 
@@ -1136,12 +1303,20 @@ function App() {
                   <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>⚙ EQUIPMENT</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
                     {shopItems.filter(i=>i.slot).map(item=>{
-                      const cost=getShopCost(item,idlePlayer);
+                      const cost = getShopCost(item,idlePlayer);
+                      const equipOK = canEquipItem(item, equipment, idlePlayer);
+                      let reason = '';
+                      if (!equipOK && item.slot==='offhand') {
+                        if (equipment.weapon?.hand==='two')                       reason = 'TWO-HANDED WEAPON BLOCKS OFFHAND';
+                        else if (item.dieIdx!=null && !idlePlayer.dualWield)      reason = 'NEEDS DUAL WIELD PERK';
+                        else if (item.dieIdx!=null && equipment.weapon?.hand!=='light') reason = 'NEEDS LIGHT MAIN WEAPON';
+                      }
                       return (
-                        <Btn key={item.id} onClick={()=>buyItem(item)} variant="shop" disabled={gold<cost}>
+                        <Btn key={item.id} onClick={()=>buyItem(item)} variant="shop" disabled={gold<cost || !equipOK}>
                           {item.emoji} {item.label}  <span style={{color:"#f8c840"}}>[{cost}💰]</span>
-                          <span style={{color:"#806040",fontSize:7}}> [{item.slot.toUpperCase()}]</span><br />
-                          <span style={{color:"#503870",fontSize:8}}>{describeItem(item,idlePlayer)}</span>
+                          <span style={{color:"#806040",fontSize:7}}> [{item.slot.toUpperCase()}{item.hand?` ${item.hand.toUpperCase()}`:''}]</span><br />
+                          <span style={{color:"#503870",fontSize:8}}>{describeItem(item,roomPlayer)}</span>
+                          {reason && <><br /><span style={{color:"#e08020",fontSize:7}}>⚠ {reason}</span></>}
                         </Btn>
                       );
                     })}
@@ -1157,7 +1332,7 @@ function App() {
                       return (
                         <Btn key={item.id} onClick={()=>buyItem(item)} variant="shop" disabled={gold<cost}>
                           ▶ {item.label}  <span style={{color:"#f8c840"}}>[{cost}💰]</span><br />
-                          <span style={{color:"#503870",fontSize:8}}>{describeItem(item,idlePlayer)}</span>
+                          <span style={{color:"#503870",fontSize:8}}>{describeItem(item,roomPlayer)}</span>
                         </Btn>
                       );
                     })}
@@ -1200,14 +1375,20 @@ function App() {
                 {player.tripleStrikeChance>0 && <><br /><span style={{color:"#f8c840"}}>⚔⚔⚔ TRIPLE STRIKE {player.tripleStrikeChance}% (DOUBLE GUARANTEED)</span></>}
                 {player.ironWill    && <><br /><span style={{color:"#80d0f8"}}>🛡 IRON WILL READY</span></>}
                 {player.armorPierce && <><br /><span style={{color:"#e080f8"}}>💥 ARMOR PIERCE READY</span></>}
+                {player.dualWield   && <><br /><span style={{color:"#f8c840"}}>⚔⚔ DUAL WIELD ENABLED</span></>}
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {roomChoices.map(room=>(
-                  <Btn key={room.id} onClick={()=>startBattle(room)} variant={room.isBoss?"attack":"neutral"}>
-                    {room.icon} {room.label}<br />
-                    <span style={{color:room.known?"#608060":"#3a3010",fontSize:8}}>{(room.known||devMode)?room.desc:"WISDOM TOO LOW · DETAILS HIDDEN"}</span>
-                  </Btn>
-                ))}
+                {roomChoices.map(room=>{
+                  const showEnemy = (room.enemyKnown||devMode) && room.enemy;
+                  return (
+                    <Btn key={room.id} onClick={()=>startBattle(room)} variant={room.isBoss?"attack":"neutral"}>
+                      {room.icon} {room.label}
+                      {showEnemy && <span style={{color:"#e08020",fontSize:8}}> · {room.enemy.emoji} {room.enemy.name}</span>}<br />
+                      <span style={{color:room.known?"#608060":"#3a3010",fontSize:8}}>{(room.known||devMode)?room.desc:"WISDOM TOO LOW · DETAILS HIDDEN"}</span>
+                      {!showEnemy && <><br /><span style={{color:"#3a3010",fontSize:7}}>FOE UNKNOWN · RAISE WISDOM</span></>}
+                    </Btn>
+                  );
+                })}
                 <Btn onClick={()=>{ setSelectedSlot(null); setEquipOpen(true); }} variant="stat">🧍 VIEW GEAR</Btn>
               </div>
               <div style={{ marginTop:18, display:"flex", justifyContent:"center" }}>
