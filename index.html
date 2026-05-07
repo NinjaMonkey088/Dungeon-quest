@@ -1224,54 +1224,53 @@ function App() {
      {equipOpen && (
   <div style={{ position:"fixed", inset:0, background:"rgba(4,3,1,0.92)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
        onClick={e=>{ if(e.target===e.currentTarget) setEquipOpen(false); }}>
-    <div style={{ width:"100%", maxWidth:560 }}>
+    <div style={{ width:"100%", maxWidth:580 }}>
       <TileBox highlight style={{ padding:24 }}>
-        <div style={{ fontSize:13, color:"#f8e000", textAlign:"center", marginBottom:20, letterSpacing:"0.05em" }}>
+        <div style={{ fontSize:14, color:"#f8e000", textAlign:"center", marginBottom:20, letterSpacing:"0.08em" }}>
           🧍 CHARACTER GEAR
         </div>
         
-        <div style={{ display:"flex", gap:20, alignItems:"flex-start" }}>
-          {/* Gear Body */}
-          <BodyLayout equip={equipment} selected={selectedSlot} onSelect={setSelectedSlot} cellSize={46} />
+        <div style={{ display:"flex", gap:24, alignItems:"flex-start" }}>
+          <BodyLayout equip={equipment} selected={selectedSlot} onSelect={setSelectedSlot} cellSize={48} />
 
-          {/* Gear Detail + Stats */}
-          <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ flex:1 }}>
             <GearDetail selectedSlot={selectedSlot} equipment={equipment} />
 
-            {/* STATS SECTION */}
-            <div style={{ marginTop:24, padding:16, background:"rgba(0,0,0,0.4)", border:"1px solid #3a2f15" }}>
-              <div style={{ fontSize:11, color:"#f8e000", marginBottom:12, letterSpacing:"0.1em" }}>CURRENT STATS</div>
+            {/* STATS SECTION - Improved readability */}
+            <div style={{ marginTop:28, padding:18, background:"rgba(20,15,5,0.6)", border:"2px solid #3a2f15" }}>
+              <div style={{ fontSize:12, color:"#f8e000", marginBottom:14, letterSpacing:"0.1em" }}>CURRENT STATS</div>
               
-              <div style={{ fontSize:9.5, lineHeight:1.85, color:"#d4c3a0" }}>
-                <div><strong>HP</strong> {ep.hp}/{ep.maxHp} — <span style={{color:"#888"}}>Health Points. Reach 0 and you die.</span></div>
-                <div><strong>ATK</strong> {dmgRange(ep.atkDmg, ep.dieIdx)} — <span style={{color:"#888"}}>Damage you deal per hit.</span></div>
-                <div><strong>ARM</strong> {ep.armor} — <span style={{color:"#888"}}>Damage reduction from physical attacks.</span></div>
-                <div><strong>HIT</strong> {ep.hitChance}% — <span style={{color:"#888"}}>Chance to successfully hit enemies.</span></div>
-                <div><strong>DOD</strong> {ep.dodgeChance}% — <span style={{color:"#888"}}>Chance to completely avoid an attack.</span></div>
-                <div><strong>CRT</strong> {ep.critChance}% — <span style={{color:"#888"}}>Chance to land a critical hit (double damage).</span></div>
-                
-                <div style={{marginTop:8}}><strong>STR</strong> {ep.strength} — <span style={{color:"#888"}}>Increases damage and carry capacity.</span></div>
-                <div><strong>DEX</strong> {ep.dexterity} — <span style={{color:"#888"}}>Improves hit chance, dodge, and crit.</span></div>
-                <div><strong>CON</strong> {ep.constitution} — <span style={{color:"#888"}}>Increases max HP and poison resistance.</span></div>
-                <div><strong>WIS</strong> {ep.wisdom} — <span style={{color:"#888"}}>Increases mana and magic power.</span></div>
-                <div><strong>INT</strong> {ep.intelligence} — <span style={{color:"#888"}}>Improves spell effectiveness and knowledge.</span></div>
-                <div><strong>CHA</strong> {ep.charisma} — <span style={{color:"#888"}}>Improves merchant prices and social skills.</span></div>
+              <div style={{ fontSize:10.5, lineHeight:2.1, color:"#d4c3a0" }}>
+                <div><strong>HP</strong> {ep.hp}/{ep.maxHp} — Health. You die at 0.</div>
+                <div><strong>ATK</strong> {dmgRange(ep.atkDmg, ep.dieIdx)} — Base damage before dice.</div>
+                <div><strong>ARM</strong> {ep.armor} — Reduces incoming physical damage.</div>
+                <div><strong>HIT</strong> {ep.hitChance}% — Chance to land attacks.</div>
+                <div><strong>DOD</strong> {ep.dodgeChance}% — Chance to avoid enemy attacks.</div>
+                <div><strong>CRT</strong> {ep.critChance}% — Chance for double damage (crits).</div>
 
-                {ep.poisonResist > 0 && (
-                  <div><strong>☠ RES</strong> {ep.poisonResist}% — <span style={{color:"#888"}}>Reduces poison damage over time.</span></div>
-                )}
-                {ep.counterChance > 0 && (
-                  <div><strong>COUNTER</strong> {ep.counterChance}% — <span style={{color:"#888"}}>Chance to automatically strike back when hit.</span></div>
-                )}
-                {ep.doubleStrikeChance > 0 && (
-                  <div><strong>⚔ DOUBLE STRIKE</strong> {ep.doubleStrikeChance}% — <span style={{color:"#888"}}>Chance to attack twice.</span></div>
+                <div style={{marginTop:12, paddingTop:10, borderTop:"1px solid #2e2808"}}>
+                  <strong>STR</strong> {ep.strength} — +Damage • +Hit Chance<br />
+                  <strong>DEX</strong> {ep.dexterity} — +Dodge • +Crit Chance<br />
+                  <strong>CON</strong> {ep.constitution} — +Max HP • +Poison Resist<br />
+                  <strong>WIS</strong> {ep.wisdom} — +Room Awareness<br />
+                  <strong>INT</strong> {ep.intelligence} — +Item Identify Chance<br />
+                  <strong>CHA</strong> {ep.charisma} — Better shop prices
+                </div>
+
+                {(ep.poisonResist > 0 || ep.counterChance > 0 || ep.doubleStrikeChance > 0 || ep.armorPierce) && (
+                  <div style={{marginTop:12, paddingTop:10, borderTop:"1px solid #2e2808"}}>
+                    {ep.poisonResist > 0 && <div><strong>☠ RESIST</strong> {ep.poisonResist}%</div>}
+                    {ep.counterChance > 0 && <div><strong>COUNTER</strong> {ep.counterChance}% — Strike back when hit</div>}
+                    {ep.doubleStrikeChance > 0 && <div><strong>⚔ DOUBLE STRIKE</strong> {ep.doubleStrikeChance}% {ep.tripleStrikeChance > 0 ? `(+ ${ep.tripleStrikeChance}% Triple)` : ""}</div>}
+                    {ep.armorPierce && <div><strong>💥 ARMOR PIERCE</strong> — Crits ignore enemy armor</div>}
+                  </div>
                 )}
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop:20, textAlign:"center" }}>
+        <div style={{ marginTop:24, textAlign:"center" }}>
           <Btn onClick={()=>setEquipOpen(false)} variant="flee">✕ CLOSE GEAR</Btn>
         </div>
       </TileBox>
