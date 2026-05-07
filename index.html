@@ -1,0 +1,1262 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dungeon Quest</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PLAYER_BASE = {
+  name:"LINK", emoji:"🧝",
+  maxHp:6, hp:6, armor:0, atkDmg:3, dieIdx:0,
+  hitChance:80, dodgeChance:0, critChance:5,
+  strength:10, dexterity:10, constitution:10,
+  wisdom:10, charisma:10, intelligence:10,
+  poisonResist:0, awareness:0, identify:0, shopDiscount:0,
+  counterChance:0, doubleStrikeChance:0, tripleStrikeChance:0,
+  armorPierce:false,
+};
+
+const STAT_POOL = [
+  { id:"strength",     label:"STRENGTH +2",     desc:"ATTACK +1 · ACCURACY +5%",          apply:p=>({...p,strength:p.strength+2}) },
+  { id:"dexterity",    label:"DEXTERITY +2",    desc:"DODGE +5% · CRIT +5%",             apply:p=>({...p,dexterity:p.dexterity+2}) },
+  { id:"constitution", label:"CONSTITUTION +2", desc:"MAX HP +2 · POISON RESIST +5%",    apply:p=>({...p,constitution:p.constitution+2,maxHp:p.maxHp+2,hp:p.hp+2}) },
+  { id:"wisdom",       label:"WISDOM +2",       desc:"ROOM AWARENESS +15%",              apply:p=>({...p,wisdom:p.wisdom+2}) },
+  { id:"charisma",     label:"CHARISMA +2",     desc:"SHOP PRICES -5%",                 apply:p=>({...p,charisma:p.charisma+2}) },
+  { id:"intelligence", label:"INTELLIGENCE +2", desc:"ITEM IDENTIFY +15%",               apply:p=>({...p,intelligence:p.intelligence+2}) },
+];
+
+const THRESHOLD_UNLOCKS = {
+  5:  { id:"doubleStrikeChance", label:"★ DOUBLE STRIKE!", desc:"UNLOCKS 25% CHANCE TO ATTACK TWICE",      apply:p=>({...p,doubleStrikeChance:25}) },
+  10: { id:"ironWill",           label:"★ IRON WILL!",     desc:"SURVIVE A KILLING BLOW WITH 1 HP ONCE",   apply:p=>({...p,ironWill:true}) },
+  15: { id:"armorPierce",        label:"★ ARMOR PIERCE!",  desc:"CRITICAL HITS IGNORE ALL ENEMY ARMOR",    apply:p=>({...p,armorPierce:true}) },
+};
+
+const ENEMY_DEFS = {
+  MOBLIN:    { emoji:"👺", niche:"FODDER",       maxHp:4,  attack:1, armor:0, hitChance:55, dodgeChance:0,  xp:1, goldMin:1, goldMax:2 },
+  BOKOBLIN:  { emoji:"🐗", niche:"ACCURATE",     maxHp:5,  attack:2, armor:0, hitChance:85, dodgeChance:0,  xp:1, goldMin:1, goldMax:3 },
+  GIBDO:     { emoji:"🧟", niche:"TANK",         maxHp:12, attack:1, armor:0, hitChance:50, dodgeChance:0,  xp:2, goldMin:2, goldMax:4 },
+  LIZALFOS:  { emoji:"🦎", niche:"EVASIVE",      maxHp:5,  attack:2, armor:0, hitChance:65, dodgeChance:40, xp:2, goldMin:2, goldMax:4 },
+  WIZZROBE:  { emoji:"🧙", niche:"GLASS CANNON", maxHp:3,  attack:5, armor:0, hitChance:80, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
+  PATRA:     { emoji:"🦋", niche:"ARMORED",      maxHp:7,  attack:2, armor:2, hitChance:55, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
+  DARKNUT:   { emoji:"🗡️", niche:"HEAVY ARMOR",  maxHp:8,  attack:3, armor:4, hitChance:55, dodgeChance:0,  xp:3, goldMin:4, goldMax:6 },
+  PEAHAT:    { emoji:"🌪️", niche:"SWIFT",        maxHp:4,  attack:3, armor:0, hitChance:70, dodgeChance:40, xp:3, goldMin:3, goldMax:6 },
+  STALFOS:   { emoji:"💀", niche:"DEADEYE",      maxHp:6,  attack:3, armor:1, hitChance:95, dodgeChance:0,  xp:3, goldMin:3, goldMax:6 },
+  // New enemies
+  ARCHER:    { emoji:"🏹", niche:"SKIRMISHER",   maxHp:4,  attack:1, armor:0, hitChance:90, dodgeChance:25, xp:2, goldMin:2, goldMax:4, fleesWhenLow:true },
+  BERSERKER: { emoji:"🪓", niche:"BERSERKER",    maxHp:9,  attack:2, armor:0, hitChance:60, dodgeChance:0,  xp:3, goldMin:3, goldMax:6, enragesWhenLow:true },
+  CURSED:    { emoji:"🌑", niche:"CURSED",       maxHp:6,  attack:3, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:2, goldMax:5, bleedsOnCrit:true },
+  KEESE:     { emoji:"🦇", niche:"FIRE BAT",     maxHp:3,  attack:2, armor:0, hitChance:75, dodgeChance:15, xp:2, goldMin:2, goldMax:4, burnsOnHit:true },
+  LIKE_LIKE: { emoji:"🫧", niche:"STUNNING",    maxHp:5,  attack:2, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:3, goldMax:5, stunsOnHit:true },
+};
+
+const WAVES = [
+  [["MOBLIN",    10]],
+  [["BOKOBLIN",   5],["MOBLIN",    3],["ARCHER",    2]],
+  [["GIBDO",      3],["LIZALFOS",  3],["STALFOS",  2],["BOKOBLIN",  2],["ARCHER",   2],["BERSERKER",1],["KEESE",   1]],
+  [["WIZZROBE",   3],["PATRA",     3],["STALFOS",  2],["GIBDO",     1],["LIZALFOS", 1],["BERSERKER",2],["CURSED",  2],["KEESE",1],["LIKE_LIKE",1]],
+  [["DARKNUT",    3],["PEAHAT",    3],["WIZZROBE", 2],["STALFOS",   2],["PATRA",    2],["BERSERKER",2],["CURSED",  2],["KEESE",1],["LIKE_LIKE",2]],
+];
+
+// Waves 1-4 use WAVE_BOSSES; waves 5+ cycle through BOSS_DEFS, scaling on repeat
+const WAVE_BOSSES = [
+  { name:"KING BOKOBLIN", emoji:"🐗", maxHp:9,  attack:3, armor:1, hitChance:88, dodgeChance:0,  xp:3, goldMin:3, goldMax:6,  isBoss:true },
+  { name:"MUMMY LORD",    emoji:"🧟", maxHp:18, attack:2, armor:1, hitChance:58, dodgeChance:0,  xp:4, goldMin:4, goldMax:8,  isBoss:true },
+  { name:"ARCH WIZZROBE", emoji:"🧙", maxHp:7,  attack:7, armor:0, hitChance:85, dodgeChance:15, xp:4, goldMin:5, goldMax:9,  isBoss:true },
+  { name:"IRON DARKNUT",  emoji:"🗡️", maxHp:13, attack:5, armor:5, hitChance:62, dodgeChance:0,  xp:5, goldMin:6, goldMax:11, isBoss:true },
+];
+
+const BOSS_DEFS = [
+  { name:"GLEEOK",        emoji:"🐲", maxHp:14, attack:5, armor:2, hitChance:80, dodgeChance:15, xp:5,  goldMin:8,  goldMax:12, isBoss:true },
+  { name:"MANHANDLA",     emoji:"🌵", maxHp:18, attack:4, armor:1, hitChance:70, dodgeChance:0,  xp:6,  goldMin:10, goldMax:16, isBoss:true, poisonOnHit:true },
+  { name:"PHANTOM GANON", emoji:"👻", maxHp:20, attack:6, armor:3, hitChance:75, dodgeChance:20, xp:7,  goldMin:12, goldMax:18, isBoss:true, immuneToCrit:true },
+  { name:"GANON",         emoji:"🐷", maxHp:24, attack:7, armor:3, hitChance:80, dodgeChance:15, xp:10, goldMin:15, goldMax:25, isBoss:true, poisonOnHit:true, immuneToCrit:true },
+];
+
+const SHOP_CONSUMABLES = [
+  { id:"potion",     label:"HEALTH POTION",    desc:"RESTORE 4 HP",              cost:3,  onUse:(p,b)=>({p:{...p,hp:Math.min(p.hp+4,p.maxHp)},b}) },
+  { id:"elixir",     label:"ELIXIR",           desc:"ALL HP + CURE POISON",      cost:6,  curePoison:true, onUse:(p,b)=>({p:{...p,hp:p.maxHp},b}) },
+  { id:"megapotion", label:"MEGA POTION",       desc:"RESTORE 8 HP",              cost:9,  onUse:(p,b)=>({p:{...p,hp:Math.min(p.hp+8,p.maxHp)},b}) },
+  { id:"antidote",   label:"ANTIDOTE",         desc:"CURE ALL STATUS EFFECTS",   cost:4,  cureAll:true, onUse:(p,b)=>({p,b}) },
+  { id:"oil",        label:"BATTLE OIL",        desc:"+10% HIT · 1 BATTLE",       cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'hitChance',   val:10,battles:1}]}) },
+  { id:"whetstone",  label:"WHETSTONE",         desc:"+2 ATK · 1 BATTLE",         cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:2, battles:1}]}) },
+  { id:"scroll",     label:"CRIT SCROLL",       desc:"+10% CRIT · 1 BATTLE",      cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:10,battles:1}]}) },
+  { id:"smokebomb",  label:"SMOKE BOMB",        desc:"+20% DODGE · 1 BATTLE",     cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'dodgeChance', val:20,battles:1}]}) },
+  { id:"talisman",   label:"GUARD TALISMAN",    desc:"+2 ARMOR · 1 BATTLE",       cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'armor',       val:2, battles:1}]}) },
+  { id:"oil2",       label:"FINE BATTLE OIL",   desc:"+15% HIT · 2 BATTLES",      cost:6,  onUse:(p,b)=>({p,b:[...b,{stat:'hitChance',   val:15,battles:2}]}) },
+  { id:"whetstone2", label:"KEEN WHETSTONE",    desc:"+3 ATK · 2 BATTLES",        cost:7,  onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:3, battles:2}]}) },
+  { id:"scroll2",    label:"GREAT CRIT SCROLL", desc:"+15% CRIT · 2 BATTLES",     cost:7,  onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:15,battles:2}]}) },
+  { id:"cloak",      label:"SHADOW CLOAK",      desc:"+30% DODGE · 2 BATTLES",    cost:8,  onUse:(p,b)=>({p,b:[...b,{stat:'dodgeChance', val:30,battles:2}]}) },
+  { id:"whetstone3", label:"MASTER WHETSTONE",  desc:"+4 ATK · 3 BATTLES",        cost:12, onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:4, battles:3}]}) },
+  { id:"scroll3",    label:"ANCIENT SCROLL",    desc:"+20% CRIT · 3 BATTLES",     cost:12, onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:20,battles:3}]}) },
+];
+
+const DICE_PROGRESSION = (() => {
+  const d = (c,s) => ({ count:c, size:s, label:c>1?`${c}D${s}`:`D${s}` });
+  const p = [
+    d(1,2),d(1,4),d(1,6),d(1,8),
+    d(2,4),d(1,12),d(2,6),d(1,20),
+    d(2,8),d(2,10),
+    d(3,4),d(3,6),d(3,8),d(3,10),
+    d(4,6),d(4,8),d(4,10),
+  ];
+  for (let n=5; n<=40; n++) for (const s of [4,6,8,10]) p.push(d(n,s));
+  return p;
+})();
+
+const EQUIPMENT_DEFS = [
+  // Weapons (slot: weapon)
+  { id:"iron_sword",    slot:"weapon",  emoji:"⚔️", label:"IRON SWORD",     desc:"+2 ATK · +5% CRIT",       stats:{ atkDmg:2, critChance:5 },   cost:20 },
+  { id:"heavy_mace",    slot:"weapon",  emoji:"🔨", label:"HEAVY MACE",     desc:"+3 ATK · -5% HIT",         stats:{ atkDmg:3, hitChance:-5 },   cost:22 },
+  { id:"vampiric_blade",slot:"weapon",  emoji:"🗡️", label:"VAMPIRIC BLADE",  desc:"+1 ATK · HEAL 2 ON CRIT", stats:{ atkDmg:1 },                 cost:28, vampiric:true },
+  // Armor & accessories
+  { id:"helmet",        slot:"helmet",  emoji:"🪖", label:"IRON HELMET",    desc:"+2 ARMOR",                 stats:{ armor:2 },                  cost:16 },
+  { id:"mask",          slot:"mask",    emoji:"🎭", label:"SHADOW MASK",    desc:"+10% DODGE",               stats:{ dodgeChance:10 },            cost:14 },
+  { id:"glasses",       slot:"glasses", emoji:"🥽", label:"SHARP GLASSES",  desc:"+10% HIT CHANCE",          stats:{ hitChance:10 },              cost:14 },
+  { id:"torso",         slot:"torso",   emoji:"🧥", label:"CHAIN MAIL",     desc:"+3 ARMOR",                 stats:{ armor:3 },                  cost:26 },
+  { id:"arms",          slot:"arms",    emoji:"💪", label:"POWER BRACERS",  desc:"+2 ATTACK",                stats:{ atkDmg:2 },                 cost:22 },
+  { id:"hands",         slot:"hands",   emoji:"🧤", label:"CRIT GAUNTLETS", desc:"+10% CRIT CHANCE",         stats:{ critChance:10 },              cost:18 },
+  { id:"belt",          slot:"belt",    emoji:"🪢", label:"HERO BELT",      desc:"+4 MAX HP",                stats:{ maxHp:4 },                  cost:16 },
+  { id:"leg",           slot:"leg",     emoji:"🦵", label:"IRON GREAVES",   desc:"+2 ARMOR",                 stats:{ armor:2 },                  cost:18 },
+  { id:"eq_cloak",      slot:"cloak",   emoji:"🧣", label:"SHADOW CLOAK",   desc:"+15% DODGE",               stats:{ dodgeChance:15 },            cost:20 },
+  { id:"dodge_cloak",  slot:"cloak",   emoji:"🥋", label:"DODGE CLOAK",    desc:"+20% DODGE · -1 ARMOR",    stats:{ dodgeChance:20, armor:-1 },  cost:16 },
+  { id:"feet",          slot:"feet",    emoji:"👢", label:"SWIFT BOOTS",    desc:"+10% DODGE",               stats:{ dodgeChance:10 },            cost:16 },
+  { id:"amulet",        slot:"amulet",  emoji:"📿", label:"MYSTIC AMULET",  desc:"+5% CRIT · +5% HIT",       stats:{ critChance:5, hitChance:5 }, cost:24 },
+  // Rings
+  { id:"ring_atk", slot:"ring", emoji:"💍", label:"POWER RING",    desc:"+1 ATTACK",  stats:{ atkDmg:1 },       cost:10 },
+  { id:"ring_arm", slot:"ring", emoji:"💍", label:"SHIELD RING",   desc:"+1 ARMOR",   stats:{ armor:1 },         cost:9  },
+  { id:"ring_hit", slot:"ring", emoji:"💍", label:"AIM RING",      desc:"+5% HIT",    stats:{ hitChance:5 },      cost:8  },
+  { id:"ring_crt", slot:"ring", emoji:"💍", label:"CRIT RING",     desc:"+5% CRIT",   stats:{ critChance:5 },    cost:8  },
+  { id:"ring_dod", slot:"ring", emoji:"💍", label:"EVASION RING",  desc:"+5% DODGE",  stats:{ dodgeChance:5 },   cost:8  },
+  { id:"ring_hp",   slot:"ring", emoji:"💍", label:"LIFE RING",    desc:"+2 MAX HP",              stats:{ maxHp:2 },              cost:8  },
+  { id:"ring_greed",slot:"ring", emoji:"💍", label:"RING OF GREED",desc:"+50% GOLD · TAKE +2 DMG", stats:{ greedPenalty:2 },       cost:15 },
+];
+
+// col 1-5, row 1-8; rings occupy row 8
+const BODY_SLOTS = [
+  { key:"weapon",  emoji:"⚔️", col:1, row:2 },
+  { key:"mask",    emoji:"🎭", col:2, row:1 },
+  { key:"helmet",  emoji:"🪖", col:3, row:1 },
+  { key:"glasses", emoji:"🥽", col:4, row:1 },
+  { key:"amulet",  emoji:"📿", col:3, row:2 },
+  { key:"arms",    emoji:"💪", col:1, row:3 },
+  { key:"torso",   emoji:"🧥", col:3, row:3 },
+  { key:"cloak",   emoji:"🧣", col:5, row:3 },
+  { key:"hands",   emoji:"🧤", col:2, row:4 },
+  { key:"belt",    emoji:"🪢", col:3, row:5 },
+  { key:"leg",     emoji:"🦵", col:3, row:6 },
+  { key:"feet",    emoji:"👢", col:3, row:7 },
+];
+
+const EMPTY_EQUIP = { ...Object.fromEntries(BODY_SLOTS.map(s=>[s.key,null])), rings:[] };
+const STAT_LABEL  = { atkDmg:'ATK', armor:'ARM', hitChance:'HIT', dodgeChance:'DOD', critChance:'CRT', maxHp:'MAX HP', greedPenalty:'DMG TAKEN', strength:'STR', dexterity:'DEX', constitution:'CON', wisdom:'WIS', charisma:'CHA', intelligence:'INT' };
+const WAVE_LENGTH = 5;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const roll  = n => Math.floor(Math.random()*n)+1;
+const clamp = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
+const pct   = c => roll(100)<=c;
+const getDie = i => DICE_PROGRESSION[Math.min(i||0,DICE_PROGRESSION.length-1)];
+
+function rollDiceV(idx) {
+  const {count,size,label} = getDie(idx);
+  const rs = Array.from({length:count},()=>roll(size));
+  return { total:rs.reduce((a,b)=>a+b,0), text:`[${label}:${rs.join('+')}]` };
+}
+
+function d20Hit(chance) {
+  const rolled = roll(20);
+  return { rolled, hit:rolled >= Math.max(1,Math.round(21-chance/5)) };
+}
+
+function dmgRange(atk, die) {
+  const d = (die && typeof die==='object') ? die : getDie(die);
+  return `${Math.max(0,atk+d.count)}-${atk+d.count*d.size}`;
+}
+
+function applyBuffs(p, buffs) {
+  const out = {...p};
+  buffs.forEach(b => { out[b.stat]=(out[b.stat]||0)+b.val; });
+  return out;
+}
+
+function applyEquipment(p, equip) {
+  const out = {...p};
+  [...BODY_SLOTS.map(s=>equip[s.key]), ...equip.rings]
+    .filter(Boolean)
+    .forEach(item => Object.entries(item.stats).forEach(([k,v]) => { out[k]=(out[k]||0)+v; }));
+  return out;
+}
+
+const abilityMod = score => Math.floor(((score||10)-10)/2);
+
+function applyAbilityStats(p) {
+  const out = {...p};
+  const str = abilityMod(out.strength);
+  const dex = abilityMod(out.dexterity);
+  const con = abilityMod(out.constitution);
+  const wis = abilityMod(out.wisdom);
+  const cha = abilityMod(out.charisma);
+  const int = abilityMod(out.intelligence);
+  out.maxHp       = Math.max(1,out.maxHp);
+  out.hp          = Math.min(out.hp,out.maxHp);
+  out.atkDmg      = Math.max(0,out.atkDmg + str);
+  out.hitChance   = clamp(out.hitChance + str*5,5,120);
+  out.dodgeChance = clamp(out.dodgeChance + dex*5,0,75);
+  out.critChance  = clamp(out.critChance + dex*5,0,80);
+  out.poisonResist= clamp((out.poisonResist||0)+Math.max(0,con)*5,0,75);
+  out.awareness   = clamp((out.awareness||0)+Math.max(0,wis)*15,0,95);
+  out.identify    = clamp((out.identify||0)+Math.max(0,int)*15,0,95);
+  out.shopDiscount= clamp((out.shopDiscount||0)+Math.max(0,cha)*5,0,40);
+  return out;
+}
+
+function getEffectivePlayer(p, equip, buffs=[]) {
+  return applyBuffs(applyAbilityStats(applyEquipment(p,equip)),buffs);
+}
+
+const getAvailableEquipment = equip =>
+  EQUIPMENT_DEFS.filter(item => item.slot==='ring' ? equip.rings.length<5 : !equip[item.slot]);
+
+const getShopCost = (item, p) => Math.max(1,Math.ceil(item.cost*(1-(p.shopDiscount||0)/100)));
+
+function describeItem(item, p) {
+  if (!item.slot || (p.identify||0)>=50) return item.desc;
+  if (item.stats.maxHp) return "VITAL GEAR · EXACT POWER UNCLEAR";
+  if (item.stats.armor) return "DEFENSIVE GEAR · EXACT POWER UNCLEAR";
+  if (item.stats.atkDmg || item.stats.hitChance || item.stats.critChance) return "COMBAT GEAR · EXACT POWER UNCLEAR";
+  return "ENCHANTED GEAR · EXACT POWER UNCLEAR";
+}
+
+function pickRandom(pool, n) {
+  const src=[...pool], out=[];
+  while (out.length<n && src.length) out.push(src.splice(Math.floor(Math.random()*src.length),1)[0]);
+  return out;
+}
+
+const ROOM_TYPES = [
+  { id:"small",  icon:"▦", label:"SMALL ROOM", desc:"A TIGHT, CLEAN FIGHT" },
+  { id:"big",    icon:"▣", label:"BIG ROOM",   desc:"MORE GOLD · TOUGHER FOE", enemyMod:e=>({...e,maxHp:e.maxHp+2,hp:e.hp+2,attack:e.attack+1,goldMin:e.goldMin+1,goldMax:e.goldMax+3}) },
+  { id:"bridge", icon:"═", label:"BRIDGE",     desc:"SWIFT FOE · GOOD GOLD", enemyMod:e=>({...e,dodgeChance:(e.dodgeChance||0)+15,goldMax:e.goldMax+2}) },
+  { id:"stairs", icon:"⇣", label:"STAIRS",     desc:"DEEPER PATH · BONUS XP", enemyMod:e=>({...e,xp:e.xp+1}) },
+  { id:"shrine", icon:"✚", label:"OLD SHRINE", desc:"WEAKER FOE · SMALL GOLD", enemyMod:e=>({...e,hitChance:Math.max(30,e.hitChance-10),goldMin:Math.max(1,e.goldMin-1)}) },
+];
+
+function makeRoomChoices(pos, p, revealAll=false) {
+  if (pos>=WAVE_LENGTH-1) return [{ id:"boss", icon:"▰", label:"BOSS DOOR", desc:"THE WAVE GUARDIAN WAITS", known:true, isBoss:true }];
+  const awareness = revealAll ? 95 : (p.awareness||0);
+  return pickRandom(ROOM_TYPES,3).map(room=>({ ...room, known:pct(35+awareness) }));
+}
+
+function applyRoomToEnemy(e, room) {
+  const next = room?.enemyMod ? room.enemyMod(e) : e;
+  return {...next, hp:Math.min(next.hp,next.maxHp)};
+}
+
+// Ramps to 100 by level 15, then +1/level above 15 (counters player dodge)
+const roundToFive = v => Math.round(v/5)*5;
+const scaleHit = (base,level) =>
+  roundToFive(base + Math.min(level-1,14)/14*(100-base) + Math.max(0,level-15));
+
+function pickEnemy(level) {
+  const wave = WAVES[clamp(level-1,0,WAVES.length-1)];
+  const pool = wave.flatMap(([n,w])=>Array(w).fill(n));
+  const name = pool[Math.floor(Math.random()*pool.length)];
+  const base = ENEMY_DEFS[name];
+  const over = Math.max(0,level-WAVES.length);
+  return { name, ...base,
+    maxHp:     base.maxHp+over,
+    hp:        base.maxHp+over,
+    attack:    base.attack+Math.floor(over/5),
+    hitChance: scaleHit(base.hitChance,level),
+  };
+}
+
+function pickBoss(waveNumber, level) {
+  if (waveNumber<=WAVE_BOSSES.length) {
+    const def=WAVE_BOSSES[waveNumber-1];
+    return {...def, hp:def.maxHp, hitChance:scaleHit(def.hitChance,level)};
+  }
+  const idx   = clamp(waveNumber-WAVE_BOSSES.length-1, 0, BOSS_DEFS.length-1);
+  const def   = BOSS_DEFS[idx];
+  const bonus = Math.max(0, waveNumber-WAVE_BOSSES.length-idx-1);
+  return { ...def,
+    maxHp:     def.maxHp+bonus*2,
+    hp:        def.maxHp+bonus*2,
+    attack:    def.attack+Math.floor(bonus/2),
+    hitChance: scaleHit(def.hitChance,level),
+    goldMin:   def.goldMin+bonus,
+    goldMax:   def.goldMax+bonus*2,
+    xp:        def.xp+bonus,
+    name:      bonus>2?`ELDER ${def.name}`:def.name,
+  };
+}
+
+// ─── Combat ───────────────────────────────────────────────────────────────────
+
+function playerAttack(p, e, verbose=false) {
+  const results=[];
+  const doSwing = () => {
+    const {rolled,hit} = d20Hit(p.hitChance-e.dodgeChance);
+    const wouldCrit    = rolled >= 20-p.critChance/5;
+    if (!hit && !wouldCrit) {
+      results.push({type:"miss", text:`${rolled}! ${e.dodgeChance>0?"DODGE!":"MISS!"}`});
+      return null;
+    }
+    const r1 = rollDiceV(p.dieIdx);
+    if (wouldCrit && hit) {
+      if (e.immuneToCrit) {
+        const dmg = Math.max(0,p.atkDmg+r1.total-e.armor);
+        results.push({type:"player", text:`${rolled}! CRIT BLOCKED!${verbose?` ${r1.text}`:""} ${dmg} DMG`});
+        return dmg;
+      }
+      const armorUsed = p.armorPierce ? 0 : e.armor;
+      const r2  = rollDiceV(p.dieIdx);
+      const dmg = Math.max(0,p.atkDmg+r1.total+r2.total-armorUsed);
+      results.push({type:"crit", text:`${rolled}! ★ CRIT!${p.armorPierce&&e.armor>0?" PIERCED!":""}${verbose?` ${r1.text}+${r2.text}`:""} ${dmg} DMG!`});
+      return dmg;
+    }
+    const dmg = Math.max(0,p.atkDmg+r1.total-e.armor);
+    results.push({type:"player", text:`${rolled}! ${wouldCrit?"AUTO-HIT! ":"HIT! "}${verbose?`${r1.text} `:""}${dmg} DMG${dmg===0?" (BLOCKED)":""}`});
+    return dmg;
+  };
+  const dmg1 = doSwing()||0;
+  const dbl  = p.doubleStrikeChance||0;
+  const tpl  = p.tripleStrikeChance||0;
+  let dmg2=0, dmg3=0;
+  if (dbl>=100 || (dbl>0&&pct(dbl))) {
+    results.push({type:"player", text:tpl>0?"⚔⚔⚔ DOUBLE STRIKE!":"⚔⚔ DOUBLE STRIKE!"});
+    dmg2 = doSwing()||0;
+    if (tpl>0 && pct(tpl)) {
+      results.push({type:"player", text:"⚔⚔⚔ TRIPLE STRIKE!"});
+      dmg3 = doSwing()||0;
+    }
+  }
+  return { total:dmg1+dmg2+dmg3, results };
+}
+
+function enemyAttack(p, e, verbose=false) {
+  const results=[];
+  let dmgToPlayer=0, counterDmg=0, gotCrit=false, didPoison=false, didBurn=false, didBleed=false, didStun=false;
+  const hitRoll   = d20Hit(e.hitChance);
+  const dodgeRoll = hitRoll.hit ? d20Hit(p.dodgeChance) : null;
+  if (!hitRoll.hit) {
+    results.push({type:"miss", text:`${e.name} ${hitRoll.rolled}! MISS!`});
+  } else if (dodgeRoll?.hit) {
+    results.push({type:"dodge", text:`${e.name} ${hitRoll.rolled}! → YOU ${dodgeRoll.rolled}! DODGE!`});
+  } else {
+    const isCrit = hitRoll.rolled===20;
+    const d1 = roll(3);
+    const gp  = p.greedPenalty||0;
+    if (isCrit) {
+      gotCrit=true;
+      const d2=roll(3);
+      dmgToPlayer = Math.max(0,e.attack+d1+d2-p.armor+gp);
+      results.push({type:"enemy", text:`${e.name} 20! ★ CRIT!${verbose?` [D3:${d1}+D3:${d2}]`:""} ${dmgToPlayer} DMG!`});
+    } else {
+      dmgToPlayer = Math.max(0,e.attack+d1-p.armor+gp);
+      results.push({type:"enemy", text:`${e.name} ${hitRoll.rolled}! HIT!${verbose?` [D3:${d1}]`:""} ${dmgToPlayer} DMG${dmgToPlayer===0?" (BLOCKED)":""}`});
+    }
+    if (dmgToPlayer>0) {
+      if (e.poisonOnHit)              didPoison=true;
+      if (e.burnsOnHit)               didBurn=true;
+      if (e.bleedsOnCrit && isCrit)   didBleed=true;
+      if (e.stunsOnHit && pct(30))    didStun=true;
+    }
+    if (pct(p.counterChance)) {
+      counterDmg = Math.max(0,Math.ceil(p.atkDmg/2));
+      results.push({type:"counter", text:`COUNTER! ${counterDmg} DMG!`});
+    }
+  }
+  return { dmgToPlayer, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun };
+}
+
+// ─── UI Components ────────────────────────────────────────────────────────────
+
+function Hearts({ hp, maxHp }) {
+  return (
+    <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+      {Array.from({length:Math.ceil(maxHp/2)}).map((_,i) => {
+        const full=hp>=i*2+2, half=!full&&hp>=i*2+1;
+        return <span key={i} style={{ fontSize:18, lineHeight:1 }}>{full?"❤️":half?"🖤":"🤍"}</span>;
+      })}
+    </div>
+  );
+}
+
+function TileBox({ children, style={}, highlight=false }) {
+  return (
+    <div style={{ border:`3px solid ${highlight?"#f8e000":"#5a4a18"}`, outline:"3px solid #000", outlineOffset:-6, background:"#0e0e04", padding:"16px 18px", boxShadow:highlight?"0 0 14px rgba(248,224,0,0.2)":"none", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+const BTN_VARIANTS = {
+  attack:  ["#180808","#802020","#e05050"],
+  flee:    ["#0e0e04","#484818","#909020"],
+  neutral: ["#080e08","#205020","#50c050"],
+  stat:    ["#080814","#304860","#80b8e8"],
+  gold:    ["#140e04","#806010","#f8c840"],
+  shop:    ["#0c0820","#604090","#c080f8"],
+};
+
+function Btn({ children, onClick, variant="neutral", disabled=false, style={} }) {
+  const [bg,border,color] = BTN_VARIANTS[variant]||BTN_VARIANTS.neutral;
+  return (
+    <button onClick={onClick} disabled={disabled}
+            style={{ background:bg, border:`3px solid ${border}`, outline:"2px solid #000", color,
+                     fontFamily:"'Press Start 2P', monospace", fontSize:10, padding:"12px 16px",
+                     cursor:disabled?"default":"pointer", width:"100%", textAlign:"left",
+                     letterSpacing:"0.04em", lineHeight:1.8, opacity:disabled?0.4:1, ...style }}>
+      {children}
+    </button>
+  );
+}
+
+const LOG_COLORS = { sys:"#b8a840", player:"#50d850", enemy:"#e04040", crit:"#f8e000", warn:"#e08020", level:"#80d0f8", counter:"#e080f8", dodge:"#80e0f0", miss:"#506050", gold:"#f8c840" };
+
+function EquipDisplay({ equip }) {
+  return (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:2, justifyContent:"center" }}>
+      {BODY_SLOTS.map(({key,emoji}) => (
+        <span key={key} title={equip[key]?.label||key.toUpperCase()}
+              style={{ fontSize:13, opacity:equip[key]?1:0.18, filter:equip[key]?"none":"grayscale(1)" }}>
+          {emoji}
+        </span>
+      ))}
+      {[0,1,2,3,4].map(i => (
+        <span key={i} title={equip.rings[i]?.label||`RING SLOT ${i+1}`}
+              style={{ fontSize:12, opacity:equip.rings[i]?1:0.18 }}>💍</span>
+      ))}
+    </div>
+  );
+}
+
+function BodyLayout({ equip, selected, onSelect, cellSize=36 }) {
+  const cell = (selKey, emoji, col, row, filled) => (
+    <div key={selKey} onClick={()=>onSelect?.(selKey)}
+         style={{ gridColumn:col, gridRow:row, display:"flex", alignItems:"center", justifyContent:"center",
+                  cursor:onSelect?"pointer":"default",
+                  background:selected===selKey?"rgba(248,224,0,0.12)":"transparent",
+                  border:selected===selKey?"2px solid rgba(248,224,0,0.55)":"2px solid transparent",
+                  borderRadius:4 }}>
+      <span style={{ fontSize:cellSize*0.68, opacity:filled?1:0.18, filter:filled?"none":"grayscale(1)", userSelect:"none" }}>
+        {emoji}
+      </span>
+    </div>
+  );
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:`repeat(5,${cellSize}px)`, gridTemplateRows:`repeat(8,${cellSize}px)`, gap:3, flexShrink:0 }}>
+      {BODY_SLOTS.map(s=>cell(s.key,s.emoji,s.col,s.row,!!equip[s.key]))}
+      {[0,1,2,3,4].map(i=>cell(`ring:${i}`,"💍",i+1,8,!!equip.rings[i]))}
+    </div>
+  );
+}
+
+function DungeonMap({ wavePos, waveNumber, roomChoices }) {
+  return (
+    <div style={{ background:"#050b06", border:"2px solid #2e2808", padding:"12px 10px", marginBottom:16 }}>
+      <div style={{ color:"#806030", fontSize:7, letterSpacing:"0.1em", marginBottom:10 }}>DUNGEON MAP · WAVE {waveNumber}</div>
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(${WAVE_LENGTH},1fr)`, gap:6, alignItems:"center" }}>
+        {Array.from({length:WAVE_LENGTH}).map((_,i) => {
+          const done=i<wavePos, current=i===wavePos, boss=i===WAVE_LENGTH-1;
+          const bg=done?"#0a220a":current?"#302a04":"#101006";
+          const border=done?"#50c050":current?"#f8e000":"#3a3010";
+          const icon=done?"✓":current?"◆":boss?"▰":"?";
+          return (
+            <div key={i} style={{ minHeight:54, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5, background:bg, border:`2px solid ${border}`, outline:"1px solid #000" }}>
+              <div style={{ fontSize:15, color:current?"#f8e000":done?"#50c050":"#5a4a18" }}>{icon}</div>
+              <div style={{ fontSize:6, color:current?"#b8a840":"#5a4a18" }}>{boss?"BOSS":`R${i+1}`}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display:"flex", justifyContent:"center", gap:6, marginTop:10, flexWrap:"wrap" }}>
+        {roomChoices.map(room=>(
+          <span key={room.id} style={{ minWidth:58, textAlign:"center", fontSize:7, color:room.isBoss?"#e05050":"#80b8e8", border:"1px solid #2e2808", background:"#080e08", padding:"4px 6px" }}>
+            {room.icon} {room.label.split(" ")[0]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GearDetail({ selectedSlot, equipment }) {
+  if (!selectedSlot) return (
+    <div style={{ color:"#3a2e0a", fontSize:8, lineHeight:2.4, marginTop:8 }}>← CLICK A SLOT<br />TO INSPECT</div>
+  );
+  const isRing  = selectedSlot.startsWith("ring:");
+  const ringIdx = isRing ? parseInt(selectedSlot.split(":")[1]) : null;
+  const item    = isRing ? equipment.rings[ringIdx] : equipment[selectedSlot];
+  const slotDef = isRing ? null : BODY_SLOTS.find(s=>s.key===selectedSlot);
+  const label   = isRing ? `RING SLOT ${ringIdx+1}` : selectedSlot.toUpperCase();
+  return (
+    <>
+      <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:10 }}>
+        {slotDef?.emoji??"💍"} {label}
+      </div>
+      {item ? (
+        <>
+          <div style={{ fontSize:10, color:"#c080f8", marginBottom:6 }}>{item.label}</div>
+          <div style={{ fontSize:7, color:"#503870", lineHeight:2.2, marginBottom:10 }}>{item.desc}</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+            {Object.entries(item.stats).map(([k,v]) => {
+              const bad = v<0 || k==='greedPenalty';
+              return <div key={k} style={{ fontSize:8, color:bad?"#e08020":"#50d850" }}>{v>0?"+":""}{v} {STAT_LABEL[k]||k.toUpperCase()}</div>;
+            })}
+          </div>
+          {item.vampiric && <div style={{ fontSize:7, color:"#e040e0", marginTop:6 }}>🩸 HEAL 2 HP ON CRIT</div>}
+          <div style={{ fontSize:7, color:"#806010", marginTop:10 }}>COST {item.cost}💰</div>
+        </>
+      ) : (
+        <div style={{ fontSize:8, color:"#3a2e0a", marginTop:16, lineHeight:2.4 }}>
+          — EMPTY —<br /><span style={{ fontSize:7, color:"#2a2008" }}>VISIT THE SHOP<br />AFTER A BOSS</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ItemButtons({ items, onUse, inBattle=true }) {
+  return items.map((item,i) => (
+    <Btn key={i} onClick={()=>onUse(item,inBattle)} variant="shop">
+      ▶ {item.label}<br /><span style={{ color:"#503870", fontSize:8 }}>{item.desc}</span>
+    </Btn>
+  ));
+}
+
+const CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0} body{background:#080804}
+  @keyframes blink       {0%,100%{opacity:1}50%{opacity:0}}
+  @keyframes shake       {0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+  .shake{animation:shake 0.3s ease}
+  @keyframes playerSwing {0%{transform:translateX(0)}30%{transform:translateX(52px)}68%{transform:translateX(46px)}100%{transform:translateX(0)}}
+  @keyframes enemySwing  {0%{transform:translateX(0)}30%{transform:translateX(-52px)}68%{transform:translateX(-46px)}100%{transform:translateX(0)}}
+  @keyframes getHit      {0%,100%{transform:translateX(0);filter:brightness(1)}18%{transform:translateX(-11px);filter:brightness(7) sepia(1) saturate(10) hue-rotate(300deg)}42%{transform:translateX(6px);filter:brightness(2.5)}62%{transform:translateX(-4px);filter:brightness(1.5)}80%{transform:translateX(2px)}}
+  @keyframes getCrit     {0%,100%{transform:scale(1) translateX(0);filter:brightness(1)}14%{transform:scale(1.45) translateX(-16px);filter:brightness(14) saturate(0)}38%{transform:scale(1.2) translateX(-10px);filter:brightness(6) hue-rotate(45deg)}62%{transform:scale(1.06) translateX(-5px);filter:brightness(2.5)}}
+  @keyframes enemyDodge  {0%,100%{transform:translateX(0);opacity:1}28%{transform:translateX(44px);opacity:0.45}64%{transform:translateX(26px);opacity:0.75}}
+  @keyframes playerDodge {0%,100%{transform:translateX(0);opacity:1}28%{transform:translateX(-44px);opacity:0.45}64%{transform:translateX(-26px);opacity:0.75}}
+  @keyframes bossGlow    {0%,100%{filter:drop-shadow(0 0 5px rgba(248,224,0,0.45))}50%{filter:drop-shadow(0 0 13px rgba(248,224,0,0.85))}}
+  @keyframes missSwing   {0%{transform:translateX(0) rotate(0deg)}28%{transform:translateX(30px) rotate(12deg)}55%{transform:translateX(22px) rotate(-4deg)}100%{transform:translateX(0) rotate(0deg)}}
+  @keyframes poisonPulse {0%,100%{filter:hue-rotate(0deg)}50%{filter:hue-rotate(80deg) brightness(1.3)}}
+  @keyframes burnPulse   {0%,100%{filter:hue-rotate(0deg)}50%{filter:hue-rotate(-70deg) brightness(1.6) saturate(3)}}
+  @keyframes stunPulse   {0%,100%{filter:brightness(1) saturate(1)}50%{filter:brightness(0.45) saturate(0) hue-rotate(200deg)}}
+  ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#3a3010}
+`;
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+
+function App() {
+  const [player,       setPlayer]       = useState({...PLAYER_BASE});
+  const [enemy,        setEnemy]        = useState(null);
+  const [log,          setLog]          = useState([{text:"PRESS START TO BEGIN",type:"sys"}]);
+  const [phase,        setPhase]        = useState("title");
+  const [showScores,   setShowScores]   = useState(false);
+  const [ironUsed,     setIronUsed]     = useState(false);
+  const [level,        setLevel]        = useState(1);
+  const [xp,           setXp]           = useState(0);
+  const [restXpLost,   setRestXpLost]   = useState(0);
+  const [gold,         setGold]         = useState(0);
+  const [shaking,      setShaking]      = useState(null);
+  const [levelUpOpts,  setLevelUpOpts]  = useState([]);
+  const [pickedStats,  setPickedStats]  = useState([]);
+  const [thresholdMsg, setThresholdMsg] = useState(null);
+  const [wavePos,      setWavePos]      = useState(0);
+  const [waveNumber,   setWaveNumber]   = useState(1);
+  const [roomChoices,  setRoomChoices]  = useState(()=>makeRoomChoices(0,applyAbilityStats(PLAYER_BASE),false));
+  const [shopItems,    setShopItems]    = useState([]);
+  const [equipment,    setEquipment]    = useState({...EMPTY_EQUIP});
+  const [inventory,    setInventory]    = useState([]);
+  const [tempBuffs,    setTempBuffs]    = useState([]);
+  const [shopUnlocked, setShopUnlocked] = useState(false);
+  const [selectingItem,setSelectingItem]= useState(false);
+  const [arenaAnim,    setArenaAnim]    = useState({player:'idle',enemy:'idle'});
+  const [devMode,      setDevMode]      = useState(false);
+  const [equipOpen,    setEquipOpen]    = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [poison,       setPoison]       = useState(0);
+  const [burn,         setBurn]         = useState(0);
+  const [bleed,        setBleed]        = useState(0);
+  const [stun,         setStun]         = useState(0);
+  const [gameStats,    setGameStats]    = useState({biggestHit:0,biggestHitTaken:0,killCounts:{},itemsUsed:{}});
+  const [highScores,   setHighScores]   = useState(()=>JSON.parse(localStorage.getItem('dq_scores')||'[]'));
+  const logRef = useRef(null);
+
+  const ep         = getEffectivePlayer(player,equipment,tempBuffs);
+  const idlePlayer = getEffectivePlayer(player,equipment);
+  const roomPlayer = devMode ? {...idlePlayer,awareness:95,wisdom:30} : idlePlayer;
+  const XP_NEEDED = level*3;
+
+  useEffect(()=>{ if(logRef.current) logRef.current.scrollTop=logRef.current.scrollHeight; },[log]);
+
+  const addLog = (text,type="sys") => setLog(prev=>[...prev.slice(-60),{text,type}]);
+  const shake  = who => { setShaking(who); setTimeout(()=>setShaking(null),350); };
+
+  const triggerArenaAnim = (p,e,dur=620) => {
+    setArenaAnim({player:p,enemy:e});
+    setTimeout(()=>setArenaAnim({player:'idle',enemy:'idle'}),dur);
+  };
+
+  function saveHighScore(finalGold) {
+    const scores = [...JSON.parse(localStorage.getItem('dq_scores')||'[]'), {gold:finalGold,date:new Date().toLocaleDateString()}]
+      .sort((a,b)=>b.gold-a.gold).slice(0,5);
+    localStorage.setItem('dq_scores',JSON.stringify(scores));
+    setHighScores(scores);
+  }
+
+  function triggerLevelUp(newLevel, currentPlayer) {
+    const threshold = THRESHOLD_UNLOCKS[newLevel];
+    setLevelUpOpts(STAT_POOL);
+    setPickedStats([]);
+    if (threshold && !currentPlayer[threshold.id]) { setThresholdMsg(threshold); setPhase("threshold"); }
+    else setPhase("levelup");
+  }
+
+  function pickStat(stat) {
+    const next=[...pickedStats,stat];
+    setPickedStats(next);
+    if (next.length>=1) { const updated=stat.apply({...player}); setPlayer(updated); setRoomChoices(makeRoomChoices(wavePos,applyAbilityStats(updated),devMode)); setPhase("win"); }
+  }
+
+  function confirmThreshold() {
+    const t=THRESHOLD_UNLOCKS[level];
+    if (t) setPlayer(p=>t.apply(p));
+    setPhase("levelup");
+  }
+
+  function enterRest() {
+    setRestXpLost(xp);
+    setXp(0);
+    setEnemy(null);
+    setPhase("rest");
+  }
+
+  function startBattle(room) {
+    const newPos = wavePos+1;
+    const isBoss = !!room?.isBoss || newPos>=WAVE_LENGTH;
+    const baseEnemy = isBoss ? pickBoss(waveNumber,level) : pickEnemy(level);
+    const e = {...applyRoomToEnemy(baseEnemy,room), roomPos:newPos, roomLabel:room?.label};
+    setWavePos(newPos);
+    setEnemy(e); setPhase("player"); setIronUsed(false);
+    setTempBuffs(prev=>prev.map(b=>({...b,battles:b.battles-1})).filter(b=>b.battles>0));
+    setSelectingItem(false);
+    setArenaAnim({player:'idle',enemy:'idle'});
+    setLog([{text:isBoss?`★★ ${e.name} APPROACHES! ★★`:`${room?.icon||"▶"} ${room?.label||"ROOM"}: ${e.emoji} ${e.name}!`, type:isBoss?"crit":"sys"}]);
+  }
+
+  function handleAction(key) {
+    if (phase!=="player"||!enemy) return;
+    if (key==="flee") {
+      if (pct(75)) {
+        addLog(xp>0?`YOU FLEE! –${xp} XP LOST!`:"YOU FLEE INTO THE DARKNESS!","warn");
+        enterRest();
+      } else {
+        addLog("BLOCKED! CAN'T ESCAPE!","warn"); runEnemyTurn(ep,enemy);
+      }
+      return;
+    }
+    const {total,results} = playerAttack(ep,enemy,devMode);
+
+    // Vampiric blade: heal on crit
+    let effectivePlayer = ep;
+    if (equipment.weapon?.vampiric && results.some(r=>r.type==='crit')) {
+      const heal=2;
+      effectivePlayer = {...ep, hp:Math.min(ep.hp+heal, ep.maxHp)};
+      setPlayer(p=>({...p, hp:Math.min(p.hp+heal, ep.maxHp)}));
+      addLog(`🗡️ VAMPIRIC! +${heal} HP!`,"level");
+    }
+
+    if (total>0) setGameStats(s=>({...s,biggestHit:Math.max(s.biggestHit,total)}));
+    const r0=results[0];
+    if      (r0.type==='crit') triggerArenaAnim('attack','crit',700);
+    else if (r0.type==='miss') triggerArenaAnim('miss','dodge',620);
+    else                       triggerArenaAnim('attack','hit',620);
+    shake("enemy");
+    results.forEach(r=>addLog(r.text,r.type));
+
+    const newHp=enemy.hp-total;
+    let next={...enemy,hp:Math.max(0,newHp)};
+
+    // Berserker enrages at half HP
+    if (enemy.enragesWhenLow && !enemy.enraged && next.hp>0 && next.hp<=Math.ceil(enemy.maxHp/2)) {
+      next={...next, enraged:true, attack:next.attack+3};
+      addLog(`${enemy.name} ENRAGES! ATK +3!`,"enemy");
+    }
+
+    setEnemy(next);
+    if (newHp<=0) { resolveVictory(next); return; }
+    runEnemyTurn(effectivePlayer,next);
+  }
+
+  function handleUseItem(item, inBattle=true) {
+    const effectiveMaxHp = getEffectivePlayer(player,equipment).maxHp;
+    const {p:usedPlayer,b:nb} = item.onUse({...player,maxHp:effectiveMaxHp},tempBuffs);
+    const np = {...usedPlayer,maxHp:player.maxHp};
+    if (item.curePoison) setPoison(0);
+    if (item.cureAll)    { setPoison(0); setBurn(0); setBleed(0); setStun(0); }
+    setPlayer(np); setTempBuffs(nb);
+    setGameStats(s=>({...s,itemsUsed:{...s.itemsUsed,[item.label]:(s.itemsUsed[item.label]||0)+1}}));
+    setInventory(inv=>{ const i=inv.findIndex(x=>x.id===item.id); return i<0?inv:[...inv.slice(0,i),...inv.slice(i+1)]; });
+    setSelectingItem(false);
+    addLog(`USED ${item.label}!`,"level");
+    if (inBattle) runEnemyTurn(applyBuffs(np,nb),enemy);
+  }
+
+  function runEnemyTurn(p, e) {
+    setPhase("enemy");
+    setTimeout(()=>{
+      let curP=p;
+
+      // Poison tick
+      if (poison>0) {
+        const newHp=curP.hp-1, left=poison-1;
+        setPoison(left);
+        addLog(`☠ POISON! 1 DMG!${left>0?` (${left} LEFT)`:" CURED!"}`, "warn");
+        if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); setPhase("lose"); addLog("POISON CLAIMED YOUR LIFE...","warn"); return; }
+        curP={...curP,hp:newHp};
+        setPlayer(prev=>({...prev,hp:newHp}));
+      }
+
+      // Burn tick
+      if (burn>0) {
+        const newHp=curP.hp-2, left=burn-1;
+        setBurn(left);
+        addLog(`🔥 BURN! 2 DMG!${left>0?` (${left} LEFT)`:" FADED!"}`, "warn");
+        if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); setPhase("lose"); addLog("THE FLAMES TOOK YOU...","warn"); return; }
+        curP={...curP,hp:newHp};
+        setPlayer(prev=>({...prev,hp:newHp}));
+      }
+
+      // Bleed decrement (effect applied to incoming damage below)
+      if (bleed>0) {
+        const left=bleed-1;
+        setBleed(left);
+        if (left===0) addLog("🩸 BLEED FADED.", "miss");
+      }
+
+      // Archer flee check (before enemy attacks)
+      if (e.fleesWhenLow && e.hp<=Math.ceil(e.maxHp*0.3) && pct(35)) {
+        addLog(`${e.name} FLEES! HALF REWARD.`, "warn");
+        resolveVictory({...e, xp:Math.ceil(e.xp/2), goldMin:1, goldMax:Math.ceil(e.goldMax/2)});
+        return;
+      }
+
+      const {dmgToPlayer:rawDmg, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun} = enemyAttack(curP,e,devMode);
+      const dmgToPlayer = devMode ? 0 : (bleed>0 ? Math.ceil(rawDmg*1.5) : rawDmg);
+
+      const r0=results[0];
+      if      (r0.type==='dodge') triggerArenaAnim('dodge',   'attack',650);
+      else if (r0.type==='miss')  triggerArenaAnim('idle',    'attack',620);
+      else if (gotCrit)           triggerArenaAnim('crit-hit','attack',700);
+      else                        triggerArenaAnim('hit',     'attack',620);
+      shake("player");
+      results.forEach(r=>addLog(r.text,r.type));
+
+      if (didPoison) {
+        if (pct(curP.poisonResist||0)) addLog("☠ POISON RESISTED!", "level");
+        else { setPoison(3); addLog(poison>0?"☠ POISON REFRESHED!":"☠ POISONED! 3 TURNS!", "warn"); }
+      }
+      if (didBurn)   { setBurn(3);   addLog(burn>0?"🔥 BURN REFRESHED!":"🔥 BURNING! 3 TURNS!", "warn"); }
+      if (didBleed)  { setBleed(3);  addLog(bleed>0?"🩸 BLEED REFRESHED!":"🩸 BLEEDING! 3 TURNS! (+50% DMG)", "warn"); }
+      if (didStun)   { setStun(1);   addLog("💫 STUNNED! YOUR NEXT TURN IS SKIPPED!", "warn"); }
+
+      if (dmgToPlayer>0) setGameStats(s=>({...s,biggestHitTaken:Math.max(s.biggestHitTaken,dmgToPlayer)}));
+
+      const newEnemyHp=e.hp-counterDmg;
+      if (counterDmg>0) setEnemy({...e,hp:Math.max(0,newEnemyHp)});
+      if (newEnemyHp<=0&&counterDmg>0) { resolveVictory({...e,hp:0}); return; }
+      const aliveEnemy = counterDmg>0 ? {...e,hp:Math.max(0,newEnemyHp)} : e;
+
+      let newHp=curP.hp-dmgToPlayer;
+      if (newHp<=0&&curP.ironWill&&!ironUsed) { newHp=1; setIronUsed(true); addLog("IRON WILL! SURVIVED WITH 1 HP!","level"); }
+      if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); setPhase("lose"); addLog("YOU HAVE FALLEN...","warn"); }
+      else {
+        setPlayer(prev=>({...prev,hp:newHp}));
+        if (didStun) {
+          const stunP={...curP,hp:newHp};
+          setTimeout(()=>{
+            setStun(0); addLog("💫 STUN WEARS OFF.","miss");
+            runEnemyTurn(stunP, aliveEnemy);
+          }, 1100);
+        } else {
+          setPhase("player"); addLog("YOUR TURN.","sys");
+        }
+      }
+    },750);
+  }
+
+  function resolveVictory(defeatedEnemy) {
+    const xpGained   = defeatedEnemy.xp??1;
+    const greedMult  = equipment.rings.some(r=>r.id==='ring_greed') ? 1.5 : 1;
+    const goldEarned = Math.round((defeatedEnemy.goldMin+Math.floor(Math.random()*(defeatedEnemy.goldMax-defeatedEnemy.goldMin+1)))*greedMult);
+    setGold(g=>g+goldEarned);
+    setGameStats(s=>({...s,killCounts:{...s.killCounts,[defeatedEnemy.name]:(s.killCounts[defeatedEnemy.name]||0)+1}}));
+    let newXp=xp+xpGained, newLevel=level, nextPlayer={...player}, didLevel=false;
+    if (newXp>=XP_NEEDED) {
+      newXp-=XP_NEEDED; newLevel++; didLevel=true;
+      const effectiveMax=getEffectivePlayer(nextPlayer,equipment).maxHp;
+      const heal=Math.ceil(effectiveMax/2);
+      nextPlayer={...nextPlayer,hp:Math.min(nextPlayer.hp+heal,effectiveMax)};
+      setPlayer(nextPlayer);
+      addLog(`★ LEVEL UP! LV ${newLevel}! +${heal} HP! ★`,"level");
+    }
+    setXp(newXp); setLevel(newLevel);
+    setTimeout(()=>{
+      addLog(`${defeatedEnemy.name} DEFEATED! +${goldEarned} 💰`,"gold");
+      const nextRoomPos = defeatedEnemy.isBoss ? 0 : (defeatedEnemy.roomPos??wavePos);
+      if (defeatedEnemy.isBoss) { setWavePos(0); setWaveNumber(n=>n+1); }
+      setRoomChoices(makeRoomChoices(nextRoomPos,getEffectivePlayer(nextPlayer,equipment),devMode));
+      if (newLevel>=21) { saveHighScore(gold+goldEarned); setEnemy(null); setPhase("gamewon"); return; }
+      if (defeatedEnemy.isBoss) {
+        const avail=getAvailableEquipment(equipment);
+        setShopItems([...pickRandom(SHOP_CONSUMABLES,3),...pickRandom(avail,Math.min(2,avail.length))]);
+        setShopUnlocked(true);
+      }
+      didLevel ? triggerLevelUp(newLevel,nextPlayer) : setPhase("win");
+    },200);
+  }
+
+  function buyItem(item) {
+    const cost = getShopCost(item,idlePlayer);
+    if (gold<cost) return;
+    setGold(g=>g-cost);
+    if (item.slot) {
+      setEquipment(eq=>item.slot==='ring'?{...eq,rings:[...eq.rings,item]}:{...eq,[item.slot]:item});
+      setShopItems(prev=>prev.filter(i=>i.id!==item.id&&(item.slot==='ring'||i.slot!==item.slot)));
+    } else {
+      setInventory(inv=>[...inv,item]);
+      setShopItems(items=>items.filter(i=>i.id!==item.id));
+    }
+  }
+
+  function restart() {
+    setPlayer({...PLAYER_BASE}); setEnemy(null); setPhase("title"); setShowScores(false);
+    setLog([{text:"PRESS START TO BEGIN",type:"sys"}]);
+    setLevel(1); setXp(0); setRestXpLost(0); setGold(0);
+    setPickedStats([]); setLevelUpOpts([]); setShopItems([]);
+    setInventory([]); setTempBuffs([]); setShopUnlocked(false);
+    setEquipment({...EMPTY_EQUIP});
+    setWavePos(0); setWaveNumber(1); setRoomChoices(makeRoomChoices(0,applyAbilityStats(PLAYER_BASE),false)); setSelectingItem(false);
+    setArenaAnim({player:'idle',enemy:'idle'});
+    setPoison(0); setBurn(0); setBleed(0); setStun(0);
+    setGameStats({biggestHit:0,biggestHitTaken:0,killCounts:{},itemsUsed:{}});
+  }
+
+  const inBattle   = ["player","enemy","win","lose","levelup","threshold"].includes(phase);
+  const nextBossIn = WAVE_LENGTH-wavePos;
+  const pa=arenaAnim.player, ea=arenaAnim.enemy;
+
+  const playerAnim =
+    pa==='attack'   ? 'playerSwing 0.56s ease-in-out'         :
+    pa==='miss'     ? 'missSwing 0.56s ease-in-out'           :
+    pa==='hit'      ? 'getHit 0.56s ease-in-out'              :
+    pa==='crit-hit' ? 'getCrit 0.68s ease-in-out'             :
+    pa==='dodge'    ? 'playerDodge 0.56s ease-in-out'         :
+    stun>0          ? 'stunPulse 0.5s ease-in-out infinite'    :
+    burn>0          ? 'burnPulse 0.8s ease-in-out infinite'   :
+    poison>0        ? 'poisonPulse 1.2s ease-in-out infinite' : 'none';
+
+  const enemyAnim =
+    ea==='attack' ? 'enemySwing 0.56s ease-in-out'    :
+    ea==='hit'    ? 'getHit 0.56s ease-in-out'        :
+    ea==='crit'   ? 'getCrit 0.68s ease-in-out'       :
+    ea==='dodge'  ? 'enemyDodge 0.56s ease-in-out'    :
+    enemy?.isBoss ? 'bossGlow 2s ease-in-out infinite': 'none';
+
+  const mostKilled = Object.entries(gameStats.killCounts).sort((a,b)=>b[1]-a[1])[0];
+  const mostUsed   = Object.entries(gameStats.itemsUsed).sort((a,b)=>b[1]-a[1])[0];
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div style={{ minHeight:"100vh", background:"#080804", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'Press Start 2P', monospace" }}>
+
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+          <div style={{ color:"#f8e000", fontSize:15, letterSpacing:"0.12em", textShadow:"2px 2px #000, 0 0 18px rgba(248,224,0,0.35)" }}>✦ DUNGEON QUEST ✦</div>
+          <button onClick={()=>setDevMode(d=>{ const next=!d; setRoomChoices(makeRoomChoices(wavePos,idlePlayer,next)); return next; })}
+                  style={{ fontFamily:"'Press Start 2P', monospace", fontSize:7, padding:"4px 8px", background:devMode?"#00101a":"#0a0a0a", border:`2px solid ${devMode?"#00c8f8":"#3a3010"}`, color:devMode?"#00c8f8":"#3a3010", cursor:"pointer", letterSpacing:"0.04em" }}>
+            {devMode?"★ DEV":"DEV"}
+          </button>
+        </div>
+        {phase!=="title" && (
+          <>
+            <div style={{ color:"#5a4a18", fontSize:8, marginBottom:6, letterSpacing:"0.12em" }}>
+              LV {level}  ·  XP {xp}/{XP_NEEDED}  ·  💰 {gold}
+              {player.doubleStrikeChance>0 && <span>  ·  {player.tripleStrikeChance>0?`⚔⚔⚔ ${player.tripleStrikeChance}%`:player.doubleStrikeChance>=100?"⚔⚔ 100%":`⚔⚔ ${player.doubleStrikeChance}%`}</span>}
+              {player.ironWill    && "  ·  🛡"}
+              {player.armorPierce && "  ·  💥"}
+              {poison>0           && <span style={{color:"#80d050"}}>  ·  ☠×{poison}</span>}
+              {burn>0             && <span style={{color:"#e08020"}}>  ·  🔥×{burn}</span>}
+              {bleed>0            && <span style={{color:"#e04040"}}>  ·  🩸×{bleed}</span>}
+              {stun>0             && <span style={{color:"#80d0f8"}}>  ·  💫 STUNNED</span>}
+            </div>
+            <div style={{ color:"#3a2e0a", fontSize:7, marginBottom:14 }}>BOSS IN {nextBossIn} {nextBossIn===1?"BATTLE":"BATTLES"}</div>
+
+            <div style={{ width:"100%", maxWidth:560, height:6, background:"#14140a", border:"2px solid #2e2808", marginBottom:18 }}>
+              <div style={{ width:`${clamp((xp/XP_NEEDED)*100,0,100)}%`, height:"100%", background:"#80d0f8", transition:"width 0.5s" }} />
+            </div>
+          </>
+        )}
+
+        <div style={{ width:"100%", maxWidth:560 }}>
+
+          {phase==="title" && (
+            <TileBox highlight style={{ textAlign:"center", padding:32 }}>
+              <div style={{ fontSize:38, marginBottom:18 }}>🧝⚔️🏰</div>
+              <div style={{ color:"#b8a840", fontSize:10, marginBottom:8, lineHeight:2.4 }}>DUNGEON GATES<br />STAND OPEN</div>
+              <div style={{ color:"#3a3010", fontSize:8, marginBottom:22, lineHeight:2.2 }}>
+                LV {level} · HP {idlePlayer.hp}/{idlePlayer.maxHp} · ATK {dmgRange(idlePlayer.atkDmg,idlePlayer.dieIdx)}<br />
+                STR {player.strength} · DEX {player.dexterity} · CON {player.constitution} · WIS {player.wisdom} · CHA {player.charisma} · INT {player.intelligence}
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                <Btn onClick={()=>{ setShowScores(false); setPhase("idle"); }} variant="neutral">▶ START</Btn>
+                <Btn onClick={()=>setShowScores(s=>!s)} variant="gold">🏆 HIGH SCORES</Btn>
+              </div>
+              {showScores && (
+                <div style={{ marginTop:20, borderTop:"2px solid #2e2808", paddingTop:16 }}>
+                  {highScores.length>0 ? highScores.map((s,i)=>(
+                    <div key={i} style={{ fontSize:7, color:"#5a4018", lineHeight:2.4 }}>
+                      {i+1}. 💰 {s.gold} <span style={{color:"#3a2e0a"}}>— {s.date}</span>
+                    </div>
+                  )) : <div style={{ fontSize:8, color:"#5a4a18", lineHeight:2.4 }}>NO HIGH SCORES YET</div>}
+                </div>
+              )}
+            </TileBox>
+          )}
+          {phase==="gamewon" && (
+            <TileBox highlight style={{ textAlign:"center", padding:24 }}>
+              <div style={{ color:"#f8e000", fontSize:12, marginBottom:6, animation:"blink 0.8s infinite" }}>★ DUNGEON CLEARED! ★</div>
+              <div style={{ color:"#80d0f8", fontSize:8, marginBottom:20, lineHeight:2.4 }}>LEVEL 20 REACHED!<br />FINAL GOLD: 💰 {gold}</div>
+              <div style={{ textAlign:"left", fontSize:8, color:"#5a4a18", lineHeight:2.4, marginBottom:20 }}>
+                {gameStats.biggestHit>0      && <div>⚔ BIGGEST HIT: <span style={{color:"#50d850"}}>{gameStats.biggestHit} DMG</span></div>}
+                {gameStats.biggestHitTaken>0 && <div>💥 BIGGEST HIT TAKEN: <span style={{color:"#e04040"}}>{gameStats.biggestHitTaken} DMG</span></div>}
+                {mostKilled && <div>💀 MOST KILLED: <span style={{color:"#f8c840"}}>{mostKilled[0]} ×{mostKilled[1]}</span></div>}
+                {mostUsed   && <div>🎒 MOST USED ITEM: <span style={{color:"#c080f8"}}>{mostUsed[0]} ×{mostUsed[1]}</span></div>}
+              </div>
+              <Btn onClick={restart} variant="gold">▶ PLAY AGAIN</Btn>
+            </TileBox>
+          )}
+
+          {inBattle && enemy && (
+            <>
+              <div style={{ border:"3px solid #1a1a0a", outline:"3px solid #000", outlineOffset:-6, background:"#050b06", marginBottom:14, padding:"18px 12px 14px" }}>
+                <div style={{ display:"flex", justifyContent:"space-around", alignItems:"flex-end", minHeight:86 }}>
+                  <div style={{ textAlign:"center", flex:1 }}>
+                    <div style={{ fontSize:44, lineHeight:1, display:"inline-block", animation:playerAnim }}>{player.emoji}</div>
+                    <div style={{ height:2, background:"#1c2210", margin:"6px auto 0", width:56 }} />
+                    <div style={{ fontSize:6, color:"#303820", marginTop:4 }}>
+                      {player.name}
+                      {stun>0   && <span style={{color:"#80d0f8"}}> 💫</span>}
+                      {poison>0 && <span style={{color:"#80d050"}}> ☠</span>}
+                      {burn>0   && <span style={{color:"#e08020"}}> 🔥</span>}
+                      {bleed>0  && <span style={{color:"#e04040"}}> 🩸</span>}
+                    </div>
+                  </div>
+                  <div style={{ color:"#242408", fontSize:10, paddingBottom:22, flexShrink:0 }}>⚡</div>
+                  <div style={{ textAlign:"center", flex:1 }}>
+                    <div style={{ fontSize:enemy.isBoss?54:44, lineHeight:1, display:"inline-block", animation:enemyAnim }}>{enemy.emoji}</div>
+                    <div style={{ height:2, background:"#1c2210", margin:"6px auto 0", width:56 }} />
+                    <div style={{ fontSize:6, color:enemy.isBoss?"#6a5000":"#3a2010", marginTop:4 }}>
+                      {enemy.name}
+                      {enemy.immuneToCrit && <span style={{color:"#80b8e8"}}> 🛡</span>}
+                      {enemy.poisonOnHit  && <span style={{color:"#80d050"}}> ☠</span>}
+                      {enemy.burnsOnHit   && <span style={{color:"#e08020"}}> 🔥</span>}
+                      {enemy.stunsOnHit   && <span style={{color:"#80d0f8"}}> 💫</span>}
+                      {enemy.enraged      && <span style={{color:"#e04040"}}> ⚡</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display:"flex", gap:12, marginBottom:14 }}>
+                <TileBox highlight={phase==="player"} style={{ flex:1 }}>
+                  <div className={shaking==="player"?"shake":""}>
+                    <div style={{ fontSize:10, color:"#b8a840", marginBottom:10 }}>{player.emoji} {player.name}</div>
+                    <Hearts hp={ep.hp} maxHp={ep.maxHp} />
+                    <div style={{ fontSize:8, color:"#5a4a18", marginTop:8, lineHeight:2.2 }}>
+                      ATK {dmgRange(ep.atkDmg,ep.dieIdx)} · ARM {ep.armor}<br />
+                      HIT {ep.hitChance}% · CRT {ep.critChance}%
+                      {ep.dodgeChance>0       && <> · DOD {ep.dodgeChance}%</>}
+                      {player.counterChance>0 && <> · CTR {player.counterChance}%</>}
+                      {" · "}{getDie(ep.dieIdx).label}
+                    </div>
+                    {(equipment.rings.length>0||BODY_SLOTS.some(s=>equipment[s.key])) && (
+                      <div style={{ marginTop:6 }}><EquipDisplay equip={equipment} /></div>
+                    )}
+                    {stun>0   && <div style={{ fontSize:7, color:"#80d0f8", marginTop:6 }}>💫 STUNNED · TURN SKIPPED</div>}
+                    {poison>0 && <div style={{ fontSize:7, color:"#80d050", marginTop:2 }}>☠ POISONED {poison} TURNS</div>}
+                    {burn>0   && <div style={{ fontSize:7, color:"#e08020", marginTop:2 }}>🔥 BURNING {burn} TURNS</div>}
+                    {bleed>0  && <div style={{ fontSize:7, color:"#e04040", marginTop:2 }}>🩸 BLEEDING {bleed} TURNS · +50% DMG</div>}
+                    {tempBuffs.length>0 && (
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:8 }}>
+                        {tempBuffs.map((b,i)=>(
+                          <span key={i} style={{ fontSize:7, color:"#50d850", background:"#0a1a0a", border:"1px solid #205020", padding:"2px 5px" }}>
+                            +{b.val} {STAT_LABEL[b.stat]} {b.battles}B
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </TileBox>
+
+                <div style={{ display:"flex", alignItems:"center", color:"#2e2808", fontSize:9 }}>VS</div>
+
+                <TileBox highlight={phase==="enemy"} style={{ flex:1 }}>
+                  <div className={shaking==="enemy"?"shake":""}>
+                    <div style={{ fontSize:10, color:enemy.isBoss?"#f8e000":"#e07050", marginBottom:4 }}>{enemy.emoji} {enemy.name}</div>
+                    {enemy.niche        && <div style={{ fontSize:7, color:"#604030", marginBottom:8 }}>[{enemy.niche}]</div>}
+                    {enemy.immuneToCrit && <div style={{ fontSize:7, color:"#80b8e8", marginBottom:4 }}>🛡 CRIT IMMUNE</div>}
+                    {enemy.poisonOnHit  && <div style={{ fontSize:7, color:"#80d050", marginBottom:4 }}>☠ POISONS ON HIT</div>}
+                    {enemy.burnsOnHit   && <div style={{ fontSize:7, color:"#e08020", marginBottom:4 }}>🔥 BURNS ON HIT</div>}
+                    {enemy.stunsOnHit   && <div style={{ fontSize:7, color:"#80d0f8", marginBottom:4 }}>💫 STUNS ON HIT (30%)</div>}
+                    {enemy.enraged      && <div style={{ fontSize:7, color:"#e04040", marginBottom:4 }}>⚡ ENRAGED! ATK {enemy.attack}</div>}
+                    <Hearts hp={enemy.hp} maxHp={enemy.maxHp} />
+                    <div style={{ fontSize:8, color:"#5a4a18", marginTop:8, lineHeight:2.2 }}>
+                      ATK {dmgRange(enemy.attack,{count:1,size:3})} · ARM {enemy.armor}<br />
+                      HIT {enemy.hitChance}%{enemy.dodgeChance>0&&<> · DOD {enemy.dodgeChance}%</>}
+                      <span style={{color:"#a08020"}}> · 💰{enemy.goldMin}-{enemy.goldMax}</span>
+                    </div>
+                  </div>
+                </TileBox>
+              </div>
+
+              <TileBox style={{ marginBottom:14 }}>
+                <div ref={logRef} style={{ height:130, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+                  {log.map((e,i)=><div key={i} style={{ fontSize:9, color:LOG_COLORS[e.type]||"#b8a840", lineHeight:1.9 }}>▷ {e.text}</div>)}
+                </div>
+              </TileBox>
+
+              {phase==="threshold" && thresholdMsg && (
+                <TileBox highlight style={{ textAlign:"center", padding:24 }}>
+                  <div style={{ color:"#f8e000", fontSize:11, marginBottom:10, animation:"blink 0.8s infinite" }}>{thresholdMsg.label}</div>
+                  <div style={{ color:"#80b8e8", fontSize:9, lineHeight:2, marginBottom:20 }}>{thresholdMsg.desc}</div>
+                  <Btn onClick={confirmThreshold} variant="gold">▶ CONTINUE</Btn>
+                </TileBox>
+              )}
+
+              {phase==="levelup" && (
+                <TileBox highlight style={{ padding:18 }}>
+                  <div style={{ color:"#f8e000", fontSize:10, marginBottom:6 }}>★ LEVEL UP! PICK 1 ABILITY</div>
+                  <div style={{ color:"#5a4a18", fontSize:8, marginBottom:16 }}>ABILITY SCORES SHAPE EVERY RUN</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {levelUpOpts.map(opt=>(
+                      <Btn key={opt.id} onClick={()=>pickStat(opt)} variant="stat">
+                        ▶ {opt.label}<br /><span style={{color:"#405870",fontSize:8}}>{opt.descFn?opt.descFn(player):opt.desc}</span>
+                      </Btn>
+                    ))}
+                  </div>
+                </TileBox>
+              )}
+
+              {phase==="win" && (
+                <TileBox style={{ textAlign:"center", padding:20 }}>
+                  <div style={{ color:"#f8e000", fontSize:12, marginBottom:16, animation:"blink 1s infinite" }}>★ VICTORY! ★</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {shopUnlocked && <Btn onClick={()=>{ setShopUnlocked(false); setPhase("shop"); }} variant="shop">🏪 ENTER SHOP</Btn>}
+                    <Btn onClick={()=>setPhase("idle")} variant="neutral">▶ EXPLORE DUNGEON</Btn>
+                    {inventory.length>0 && (
+                      <>
+                        <Btn onClick={()=>setSelectingItem(s=>!s)} variant="shop">🎒 USE ITEM  ({inventory.length} in bag)</Btn>
+                        {selectingItem && <ItemButtons items={inventory} onUse={handleUseItem} inBattle={false} />}
+                        {selectingItem && <Btn onClick={()=>setSelectingItem(false)} variant="flee">✕ CANCEL</Btn>}
+                      </>
+                    )}
+                    <Btn onClick={()=>{ setSelectedSlot(null); setEquipOpen(true); }} variant="stat">🧍 VIEW GEAR</Btn>
+                    <Btn onClick={enterRest} variant="flee">🏕  MAKE CAMP  (LOSE XP, HEAL ALL)</Btn>
+                  </div>
+                </TileBox>
+              )}
+
+              {phase==="lose" && (
+                <TileBox style={{ textAlign:"center", padding:20 }}>
+                  <div style={{ color:"#e04040", fontSize:12, marginBottom:16, animation:"blink 0.8s infinite" }}>GAME OVER</div>
+                  <Btn onClick={restart} variant="attack">▶ TRY AGAIN</Btn>
+                </TileBox>
+              )}
+
+              {phase==="player" && (
+                <TileBox>
+                  {selectingItem ? (
+                    <>
+                      <div style={{ fontSize:8, color:"#c080f8", marginBottom:12 }}>🎒 USE WHICH ITEM?</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                        <ItemButtons items={inventory} onUse={handleUseItem} inBattle={true} />
+                        <Btn onClick={()=>setSelectingItem(false)} variant="flee">✕ CANCEL</Btn>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:8, color:"#5a4a18", marginBottom:12 }}>▶ CHOOSE ACTION</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                        <Btn onClick={()=>handleAction("attack")} variant="attack">
+                          ⚔  ATTACK
+                          {ep.tripleStrikeChance>0                               && <span style={{color:"#e0a040",fontSize:9}}> (DBL + {ep.tripleStrikeChance}% TPL)</span>}
+                          {ep.doubleStrikeChance>=100&&ep.tripleStrikeChance===0 && <span style={{color:"#e0a040",fontSize:9}}> (ALWAYS DBL)</span>}
+                          {ep.doubleStrikeChance>0&&ep.doubleStrikeChance<100   && <span style={{color:"#e0a040",fontSize:9}}> ({ep.doubleStrikeChance}% DBL)</span>}
+                        </Btn>
+                        {inventory.length>0 && <Btn onClick={()=>setSelectingItem(true)} variant="shop">🎒 USE ITEM  ({inventory.length} in bag)</Btn>}
+                        <Btn onClick={()=>handleAction("flee")} variant="flee">🏃  FLEE</Btn>
+                      </div>
+                    </>
+                  )}
+                </TileBox>
+              )}
+
+              {phase==="enemy" && (
+                <TileBox style={{ textAlign:"center", padding:16 }}>
+                  <div style={{ color:"#e07050", fontSize:10, animation:"blink 0.6s infinite" }}>ENEMY TURN...</div>
+                </TileBox>
+              )}
+            </>
+          )}
+
+          {phase==="shop" && (
+            <TileBox highlight style={{ padding:20 }}>
+              <div style={{ fontSize:13, color:"#c080f8", marginBottom:4, textAlign:"center" }}>🏪 MERCHANT</div>
+              <div style={{ fontSize:8, color:"#604090", marginBottom:10, textAlign:"center" }}>💰 {gold} GOLD</div>
+              <div style={{ background:"#06030f", border:"2px solid #3a1860", padding:"12px 8px", marginBottom:16, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+                <div style={{ fontSize:7, color:"#503870", letterSpacing:"0.1em" }}>EQUIPPED GEAR</div>
+                <BodyLayout equip={equipment} cellSize={34} />
+              </div>
+              {shopItems.filter(i=>i.slot).length>0 && (
+                <>
+                  <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>⚙ EQUIPMENT</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+                    {shopItems.filter(i=>i.slot).map(item=>{
+                      const cost=getShopCost(item,idlePlayer);
+                      return (
+                        <Btn key={item.id} onClick={()=>buyItem(item)} variant="shop" disabled={gold<cost}>
+                          {item.emoji} {item.label}  <span style={{color:"#f8c840"}}>[{cost}💰]</span>
+                          <span style={{color:"#806040",fontSize:7}}> [{item.slot.toUpperCase()}]</span><br />
+                          <span style={{color:"#503870",fontSize:8}}>{describeItem(item,idlePlayer)}</span>
+                        </Btn>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              {shopItems.filter(i=>!i.slot).length>0 && (
+                <>
+                  <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>🧪 CONSUMABLES</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+                    {shopItems.filter(i=>!i.slot).map(item=>{
+                      const cost=getShopCost(item,idlePlayer);
+                      return (
+                        <Btn key={item.id} onClick={()=>buyItem(item)} variant="shop" disabled={gold<cost}>
+                          ▶ {item.label}  <span style={{color:"#f8c840"}}>[{cost}💰]</span><br />
+                          <span style={{color:"#503870",fontSize:8}}>{describeItem(item,idlePlayer)}</span>
+                        </Btn>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              {shopItems.length===0 && <div style={{ color:"#604090", fontSize:9, textAlign:"center", padding:12, marginBottom:14 }}>SOLD OUT</div>}
+              <Btn onClick={()=>{ setShopUnlocked(false); setPhase("idle"); }} variant="flee">🚪  BACK TO DUNGEON</Btn>
+            </TileBox>
+          )}
+
+          {phase==="rest" && (
+            <TileBox style={{ textAlign:"center", padding:32 }}>
+              <div style={{ fontSize:32, marginBottom:16 }}>🏕️</div>
+              <div style={{ color:"#b8a840", fontSize:10, marginBottom:8, lineHeight:2.4 }}>CAMPFIRE LIT<br />WOUNDS MENDED</div>
+              <div style={{ color:"#5a4a18", fontSize:8, marginBottom:6, lineHeight:2 }}>
+                {restXpLost>0?`–${restXpLost} XP LOST`:"NO XP LOST"} · ENEMIES REMAIN
+              </div>
+              <div style={{ color:"#50c050", fontSize:8, marginBottom:24, lineHeight:2 }}>HP FULLY RESTORED · STATUS CLEARED</div>
+              <Btn onClick={()=>{ setPlayer(p=>({...p,hp:getEffectivePlayer(p,equipment).maxHp})); setPoison(0); setBurn(0); setBleed(0); setStun(0); setPhase("idle"); }} variant="neutral">▶ BREAK CAMP</Btn>
+            </TileBox>
+          )}
+
+          {phase==="idle" && (
+            <TileBox style={{ textAlign:"center", padding:28 }}>
+              <div style={{ fontSize:34, marginBottom:14 }}>🧝🧭🕯️</div>
+              <div style={{ color:"#b8a840", fontSize:10, marginBottom:8, lineHeight:2.4 }}>CHOOSE YOUR PATH</div>
+              <div style={{ color:"#3a2e0a", fontSize:7, marginBottom:14, letterSpacing:"0.08em" }}>
+                WAVE {waveNumber} · ROOM {Math.min(wavePos+1,WAVE_LENGTH)}/{WAVE_LENGTH}
+              </div>
+              <DungeonMap wavePos={wavePos} waveNumber={waveNumber} roomChoices={roomChoices} />
+
+              <div style={{ color:"#3a3010", fontSize:8, marginBottom:16, lineHeight:2.2 }}>
+                HP {idlePlayer.hp}/{idlePlayer.maxHp} · ARM -{idlePlayer.armor} · ATK {dmgRange(idlePlayer.atkDmg,idlePlayer.dieIdx)}<br />
+                HIT {idlePlayer.hitChance}% · DOD {idlePlayer.dodgeChance}% · CRT {idlePlayer.critChance}% · ☠ RES {idlePlayer.poisonResist}%<br />
+                STR {roomPlayer.strength} · DEX {roomPlayer.dexterity} · CON {roomPlayer.constitution} · WIS {roomPlayer.wisdom} · CHA {roomPlayer.charisma} · INT {roomPlayer.intelligence}
+                {player.counterChance>0 && <><br />CTR {player.counterChance}%</>}
+                {player.doubleStrikeChance>=100&&player.tripleStrikeChance===0 && <><br /><span style={{color:"#e0a040"}}>⚔⚔ DOUBLE STRIKE (GUARANTEED)</span></>}
+                {player.doubleStrikeChance>0&&player.doubleStrikeChance<100   && <><br /><span style={{color:"#e0a040"}}>⚔⚔ DOUBLE STRIKE {player.doubleStrikeChance}%</span></>}
+                {player.tripleStrikeChance>0 && <><br /><span style={{color:"#f8c840"}}>⚔⚔⚔ TRIPLE STRIKE {player.tripleStrikeChance}% (DOUBLE GUARANTEED)</span></>}
+                {player.ironWill    && <><br /><span style={{color:"#80d0f8"}}>🛡 IRON WILL READY</span></>}
+                {player.armorPierce && <><br /><span style={{color:"#e080f8"}}>💥 ARMOR PIERCE READY</span></>}
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {roomChoices.map(room=>(
+                  <Btn key={room.id} onClick={()=>startBattle(room)} variant={room.isBoss?"attack":"neutral"}>
+                    {room.icon} {room.label}<br />
+                    <span style={{color:room.known?"#608060":"#3a3010",fontSize:8}}>{(room.known||devMode)?room.desc:"WISDOM TOO LOW · DETAILS HIDDEN"}</span>
+                  </Btn>
+                ))}
+                <Btn onClick={()=>{ setSelectedSlot(null); setEquipOpen(true); }} variant="stat">🧍 VIEW GEAR</Btn>
+              </div>
+              <div style={{ marginTop:18, display:"flex", justifyContent:"center" }}>
+                <BodyLayout equip={equipment} cellSize={32} selected={null}
+                            onSelect={k=>{ setSelectedSlot(k); setEquipOpen(true); }} />
+              </div>
+
+            </TileBox>
+          )}
+
+        </div>
+      </div>
+
+      {equipOpen && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(4,3,1,0.92)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+             onClick={e=>{ if(e.target===e.currentTarget) setEquipOpen(false); }}>
+          <div style={{ width:"100%", maxWidth:520 }}>
+            <TileBox highlight style={{ padding:20 }}>
+              <div style={{ fontSize:11, color:"#f8e000", textAlign:"center", marginBottom:16 }}>🧍 CHARACTER GEAR</div>
+              <div style={{ display:"flex", gap:16, alignItems:"flex-start" }}>
+                <BodyLayout equip={equipment} selected={selectedSlot} onSelect={setSelectedSlot} cellSize={42} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <GearDetail selectedSlot={selectedSlot} equipment={equipment} />
+                </div>
+              </div>
+              <div style={{ marginTop:16 }}>
+                <Btn onClick={()=>setEquipOpen(false)} variant="flee">✕ CLOSE</Btn>
+              </div>
+            </TileBox>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
