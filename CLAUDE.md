@@ -22,7 +22,7 @@ Keep the game playable directly from the HTML file unless a requested feature tr
   - `charisma` → -5% shop prices per mod
   - `intelligence` → +15% identify per mod (shows full equipment stats in shop)
 - **Level-up**: pick 1 attribute from the full STAT_POOL list. Half-max-HP heal on level up. XP needed = `level * 3`.
-- **Threshold unlocks** (one-time, at exact level): 5 → Double Strike (25%, scales via STAT_POOL), 10 → Iron Will (survive a killing blow once at 1 HP), 15 → Armor Pierce (crits ignore armor).
+- **Perks** (`PERK_POOL`): At levels 5, 10, 15, and 20, pick one perk you haven't already taken. Choices: Double Strike (25% chance to swing twice), Iron Will (survive one killing blow at 1 HP), Armor Pierce (crits ignore enemy armor), Dual Wield (equip a second light weapon in offhand — both swing each turn).
 - **Combat dice**: `dieIdx` indexes into `DICE_PROGRESSION` (D2 → 40D10). Player damage = `atkDmg + dice roll - enemy.armor`; crit doubles the dice roll. Enemy damage = `attack + d3 - player.armor + greedPenalty`.
 - **Status effects** (all decay over turns, applied by specific enemies):
   - ☠ Poison — 1 dmg / turn for 3 turns. Resisted by CON.
@@ -31,10 +31,10 @@ Keep the game playable directly from the HTML file unless a requested feature tr
   - 💫 Stun — skip your next turn (auto-runs another enemy turn).
 - **Wave structure**: 5 rooms per wave, room 5 is a boss. Defeating a boss advances the wave, unlocks the shop, and reshuffles room types.
 - **Bosses**: `WAVE_BOSSES` for waves 1–4 (King Bokoblin, Mummy Lord, Arch Wizzrobe, Iron Darknut). Waves 5+ cycle through `BOSS_DEFS` (Gleeok, Manhandla, Phantom Ganon, Ganon) with scaling and "ELDER" prefix at deep cycles.
-- **Equipment**: 12 body slots + 5 ring slots. Weapons (Iron Sword / Heavy Mace / Vampiric Blade), armor pieces, two cloak variants (Shadow vs Dodge tradeoff), and 7 ring types including Ring of Greed (+50% gold, +2 dmg taken).
+- **Equipment**: 13 body slots (`weapon`, `offhand`, mask/helmet/glasses, amulet, arms/torso/cloak, hands, belt, leg, feet) + 5 ring slots. Weapons span 5 commons (dagger, shortsword, longsword, spear, greatsword) tagged `hand: 'light' | 'one' | 'two'`, plus 7 rares with procs/riders (sharp dagger, keen shortsword, venom dagger, flame brand, piercing longsword, bleeding spear, vampiric blade). The `offhand` slot holds shields (3 tiers) by default, or a second light weapon when Dual Wield is unlocked + main is light. Armor pieces, two cloak variants (Shadow vs Dodge tradeoff), and 7 ring types including Ring of Greed (+50% gold, +2 dmg taken).
 - **Consumables**: HP potions, antidote (cures all status), elixir, and timed buff items (oils, whetstones, scrolls, smoke bomb, talisman, cloak) granting 1–3 battles of stat boosts.
 - **Rest / Flee**: 75% chance to flee a battle. Flee or rest forfeits current XP and full-heals + clears all status.
-- **Identify gating**: Equipment in the shop shows generic descriptions ("COMBAT GEAR · EXACT POWER UNCLEAR") until your `identify` (from INT) reaches 50%.
+- **Identify gating**: Equipment in the shop shows a generic category label ("VITAL GEAR" / "DEFENSIVE GEAR" / "COMBAT GEAR" / "ENCHANTED GEAR") until your `identify` (from INT) reaches 50%.
 - **Awareness gating**: Room types on the map start hidden as `?` — WIS reveals them.
 
 ## Technical Constraints
@@ -46,7 +46,7 @@ Keep the game playable directly from the HTML file unless a requested feature tr
 - When adding new content, follow the existing data-driven patterns:
   - `ENEMY_DEFS`, `WAVES`, `WAVE_BOSSES`, `BOSS_DEFS`
   - `SHOP_CONSUMABLES`, `EQUIPMENT_DEFS`
-  - `STAT_POOL`, `THRESHOLD_UNLOCKS`
+  - `STAT_POOL`, `PERK_POOL`
   - `BODY_SLOTS`, `ROOM_TYPES`, `STAT_LABEL`, `DICE_PROGRESSION`
 - Effective player stats are computed every render via `getEffectivePlayer(player, equipment, tempBuffs)` which composes `applyEquipment → applyAbilityStats → applyBuffs`. Do NOT mutate `player` with equipment/buff bonuses.
 

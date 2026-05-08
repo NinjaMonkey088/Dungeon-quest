@@ -18,15 +18,15 @@ const { useState, useEffect, useRef } = React;
 // HP system: hitDice is the per-level d8 roll history. Level 1 always uses max (8).
 // Effective max HP = floor((sum(hitDice) + conMod * hitDice.length) / 2). CON changes apply retroactively.
 const PLAYER_BASE = {
-  name:"LINK", emoji:"🧝",
+  name:"Hero", emoji:"🧝",
   hp:4, hitDice:[8],
   armor:1, atkDmg:3, dieIdx:0,
   hitChance:90, dodgeChance:0, critChance:5,
   strength:10, dexterity:10, constitution:10,
   wisdom:10, charisma:10, intelligence:10,
-  poisonResist:0, awareness:0, identify:0, shopDiscount:0,
+  poisonResist:0, awareness:5, identify:5, shopDiscount:0,
   counterChance:0, doubleStrikeChance:0, tripleStrikeChance:0,
-  armorPierce:false,
+  armorPierce:false, dualWield: false, ironWill: false, masterDuelist: false,
 };
 
 const STAT_POOL = [
@@ -40,79 +40,82 @@ const STAT_POOL = [
 
 // Perks are offered every 5th level. Each is one-shot — once picked, removed from future offers.
 const PERK_POOL = [
-  { id:"doubleStrikeChance", label:"★ DOUBLE STRIKE",  desc:"25% CHANCE TO ATTACK TWICE",            apply:p=>({...p,doubleStrikeChance:25}) },
+  { id:"doubleStrikeChance", label:"★ DOUBLE STRIKE",  desc:"+20% CHANCE TO ATTACK AGAIN",            apply:p=>({...p, doubleStrikeChance: (p.doubleStrikeChance || 0) + 20}) },
+  { id:"tripleStrikeChance", label:"★ TRIPLE STRIKE",  desc:"+15% CHANCE TO ATTACK AGAIN (OFF-HAND)",            apply:p=>({...p, tripleStrikeChance: (p.tripleStrikeChance || 0) + 15}) },
+  { id:"counterChance", label:"★ COUNTER STRIKE",  desc:"+20% CHANCE TO COUNTER ATTACK",            apply:p=>({...p, counterChance: (p.counterChance || 0) + 20}) },
   { id:"ironWill",           label:"★ IRON WILL",      desc:"SURVIVE A KILLING BLOW WITH 1 HP ONCE", apply:p=>({...p,ironWill:true}) },
   { id:"armorPierce",        label:"★ ARMOR PIERCE",   desc:"CRITS IGNORE ALL ENEMY ARMOR",          apply:p=>({...p,armorPierce:true}) },
   { id:"dualWield",          label:"★ DUAL WIELD",     desc:"EQUIP TWO LIGHT WEAPONS · BOTH STRIKE", apply:p=>({...p,dualWield:true}) },
+  { id:"masterDuelist",      label:"★ Master DUELIST",     desc:"NO DAMAGE PENALTY FOR OFF-HAND", apply:p=>({...p,masterDuelist:true}) },
 ];
 
 const ENEMY_DEFS = {
-  MOBLIN:    { emoji:"👺", niche:"FODDER",       maxHp:4,  attack:0, armor:0, hitChance:55, dodgeChance:0,  xp:1, goldMin:1, goldMax:2 },
-  BOKOBLIN:  { emoji:"🐗", niche:"ACCURATE",     maxHp:5,  attack:1, armor:0, hitChance:85, dodgeChance:0,  xp:1, goldMin:1, goldMax:3 },
-  GIBDO:     { emoji:"🧟", niche:"TANK",         maxHp:12, attack:1, armor:0, hitChance:50, dodgeChance:0,  xp:2, goldMin:2, goldMax:4 },
-  LIZALFOS:  { emoji:"🦎", niche:"EVASIVE",      maxHp:5,  attack:2, armor:0, hitChance:65, dodgeChance:40, xp:2, goldMin:2, goldMax:4 },
-  WIZZROBE:  { emoji:"🧙", niche:"GLASS CANNON", maxHp:3,  attack:5, armor:0, hitChance:80, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
-  PATRA:     { emoji:"🦋", niche:"ARMORED",      maxHp:7,  attack:2, armor:2, hitChance:55, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
-  DARKNUT:   { emoji:"🗡️", niche:"HEAVY ARMOR",  maxHp:8,  attack:3, armor:4, hitChance:55, dodgeChance:0,  xp:3, goldMin:4, goldMax:6 },
-  PEAHAT:    { emoji:"🌪️", niche:"SWIFT",        maxHp:4,  attack:3, armor:0, hitChance:70, dodgeChance:40, xp:3, goldMin:3, goldMax:6 },
-  STALFOS:   { emoji:"💀", niche:"DEADEYE",      maxHp:6,  attack:3, armor:1, hitChance:95, dodgeChance:0,  xp:3, goldMin:3, goldMax:6 },
+  Goblin:    { emoji:"👺", niche:"FODDER",       maxHp:4,  attack:0, armor:0, hitChance:55, dodgeChance:0,  xp:1, goldMin:1, goldMax:2 },
+  Boar:  { emoji:"🐗", niche:"ACCURATE",     maxHp:5,  attack:1, armor:0, hitChance:85, dodgeChance:0,  xp:1, goldMin:1, goldMax:3 },
+  Zombie:     { emoji:"🧟", niche:"TANK",         maxHp:12, attack:1, armor:0, hitChance:50, dodgeChance:0,  xp:2, goldMin:2, goldMax:4 },
+  Giant_Lizard:  { emoji:"🦎", niche:"EVASIVE",      maxHp:5,  attack:2, armor:0, hitChance:65, dodgeChance:40, xp:2, goldMin:2, goldMax:4 },
+  Dark_Wizard:  { emoji:"🧙", niche:"GLASS CANNON", maxHp:3,  attack:5, armor:0, hitChance:80, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
+  Fairy:     { emoji:"🦋", niche:"ARMORED",      maxHp:7,  attack:2, armor:2, hitChance:55, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
+  Cursed_Sword:   { emoji:"🗡️", niche:"HEAVY ARMOR",  maxHp:8,  attack:3, armor:4, hitChance:55, dodgeChance:0,  xp:3, goldMin:4, goldMax:6 },
+  Ghost:    { emoji:"🌪️", niche:"SWIFT",        maxHp:4,  attack:3, armor:0, hitChance:70, dodgeChance:40, xp:3, goldMin:3, goldMax:6 },
+  Skeleton:   { emoji:"💀", niche:"DEADEYE",      maxHp:6,  attack:3, armor:1, hitChance:95, dodgeChance:0,  xp:3, goldMin:3, goldMax:6 },
   // New enemies
-  ARCHER:    { emoji:"🏹", niche:"SKIRMISHER",   maxHp:4,  attack:1, armor:0, hitChance:90, dodgeChance:25, xp:2, goldMin:2, goldMax:4, fleesWhenLow:true },
-  BERSERKER: { emoji:"🪓", niche:"BERSERKER",    maxHp:9,  attack:2, armor:0, hitChance:60, dodgeChance:0,  xp:3, goldMin:3, goldMax:6, enragesWhenLow:true },
-  CURSED:    { emoji:"🌑", niche:"CURSED",       maxHp:6,  attack:3, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:2, goldMax:5, bleedsOnCrit:true },
-  KEESE:     { emoji:"🦇", niche:"FIRE BAT",     maxHp:3,  attack:2, armor:0, hitChance:75, dodgeChance:15, xp:2, goldMin:2, goldMax:4, burnsOnHit:true },
-  LIKE_LIKE: { emoji:"🫧", niche:"STUNNING",    maxHp:5,  attack:2, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:3, goldMax:5, stunsOnHit:true },
+  Archer:    { emoji:"🏹", niche:"SKIRMISHER",   maxHp:4,  attack:1, armor:0, hitChance:90, dodgeChance:25, xp:2, goldMin:2, goldMax:4, fleesWhenLow:true },
+  Berserker: { emoji:"🪓", niche:"BERSERKER",    maxHp:9,  attack:2, armor:0, hitChance:60, dodgeChance:0,  xp:3, goldMin:3, goldMax:6, enragesWhenLow:true },
+  Phantom:    { emoji:"🌑", niche:"CURSED",       maxHp:6,  attack:3, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:2, goldMax:5, bleedsOnCrit:true },
+  Imp:     { emoji:"🦇", niche:"FIRE BAT",     maxHp:3,  attack:2, armor:0, hitChance:75, dodgeChance:15, xp:2, goldMin:2, goldMax:4, burnsOnHit:true },
+  Ogre: { emoji:"🫧", niche:"STUNNING",    maxHp:5,  attack:2, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:3, goldMax:5, stunsOnHit:true },
 };
 
 const WAVES = [
-  [["MOBLIN",    10]],
-  [["BOKOBLIN",   5],["MOBLIN",    3],["ARCHER",    2]],
-  [["GIBDO",      3],["LIZALFOS",  3],["STALFOS",  2],["BOKOBLIN",  2],["ARCHER",   2],["BERSERKER",1],["KEESE",   1]],
-  [["WIZZROBE",   3],["PATRA",     3],["STALFOS",  2],["GIBDO",     1],["LIZALFOS", 1],["BERSERKER",2],["CURSED",  2],["KEESE",1],["LIKE_LIKE",1]],
-  [["DARKNUT",    3],["PEAHAT",    3],["WIZZROBE", 2],["STALFOS",   2],["PATRA",    2],["BERSERKER",2],["CURSED",  2],["KEESE",1],["LIKE_LIKE",2]],
+  [["Goblin",    10]],
+  [["Boar",   5],["Goblin",    3],["Archer",    2]],
+  [["Zombie",      3],["Giant_Lizard",  3],["Fairy",  2],["Boar",  2],["Archer",   2],["Berserker",1],["Skeleton",   1]],
+  [["Dark_Wizard",   3],["Imp",     3],["Fairy",  2],["Zombie",     1],["Giant_Lizard", 1],["Berserker",2],["Phantom",  2],["Skeleton",1],["Ogre",1]],
+  [["Cursed_Sword",    3],["Ghost",    3],["Dark_Wizard", 2],["Fairy",   2],["Imp",    2],["Berserker",2],["Phantom",  2],["Skeleton",1],["Ogre",2]],
 ];
 
 // Waves 1-4 use WAVE_BOSSES; waves 5+ cycle through BOSS_DEFS, scaling on repeat
 const WAVE_BOSSES = [
-  { name:"KING BOKOBLIN", emoji:"🐗", maxHp:9,  attack:3, armor:1, hitChance:88, dodgeChance:0,  xp:3, goldMin:3, goldMax:6,  isBoss:true },
-  { name:"MUMMY LORD",    emoji:"🧟", maxHp:18, attack:2, armor:1, hitChance:58, dodgeChance:0,  xp:4, goldMin:4, goldMax:8,  isBoss:true },
-  { name:"ARCH WIZZROBE", emoji:"🧙", maxHp:7,  attack:7, armor:0, hitChance:85, dodgeChance:15, xp:4, goldMin:5, goldMax:9,  isBoss:true },
-  { name:"IRON DARKNUT",  emoji:"🗡️", maxHp:13, attack:5, armor:5, hitChance:62, dodgeChance:0,  xp:5, goldMin:6, goldMax:11, isBoss:true },
+  { name:"KING Boar", emoji:"🐗", maxHp:9,  attack:3, armor:1, hitChance:90, dodgeChance:0,  xp:3, goldMin:3, goldMax:6,  isBoss:true },
+  { name:"Zombie LORD",    emoji:"🧟", maxHp:20, attack:2, armor:1, hitChance:100, dodgeChance:0,  xp:4, goldMin:4, goldMax:8,  isBoss:true },
+  { name:"ARCH Dark_Wizard", emoji:"🧙", maxHp:7,  attack:7, armor:0, hitChance:100, dodgeChance:40, xp:4, goldMin:5, goldMax:9,  isBoss:true },
+  { name:"IRON Cursed_Sword",  emoji:"🗡️", maxHp:15, attack:5, armor:5, hitChance:100, dodgeChance:20,  xp:5, goldMin:6, goldMax:11, isBoss:true },
 ];
 
 const BOSS_DEFS = [
-  { name:"GLEEOK",        emoji:"🐲", maxHp:14, attack:5, armor:2, hitChance:80, dodgeChance:15, xp:5,  goldMin:8,  goldMax:12, isBoss:true },
-  { name:"MANHANDLA",     emoji:"🌵", maxHp:18, attack:4, armor:1, hitChance:70, dodgeChance:0,  xp:6,  goldMin:10, goldMax:16, isBoss:true, poisonOnHit:true },
-  { name:"PHANTOM GANON", emoji:"👻", maxHp:20, attack:6, armor:3, hitChance:75, dodgeChance:20, xp:7,  goldMin:12, goldMax:18, isBoss:true, immuneToCrit:true },
-  { name:"GANON",         emoji:"🐷", maxHp:24, attack:7, armor:3, hitChance:80, dodgeChance:15, xp:10, goldMin:15, goldMax:25, isBoss:true, poisonOnHit:true, immuneToCrit:true },
+  { name:"Dragon",        emoji:"🐲", maxHp:20, attack:7, armor:5, hitChance:100, dodgeChance:15, xp:5,  goldMin:8,  goldMax:12, isBoss:true },
+  { name:"Giant Cactus",     emoji:"🌵", maxHp:25, attack:8, armor:4, hitChance:100, dodgeChance:15,  xp:6,  goldMin:10, goldMax:16, isBoss:true, poisonOnHit:true },
+  { name:"PHANTOM Lord", emoji:"👻", maxHp:30, attack:9, armor:0, hitChance:100, dodgeChance:60, xp:7,  goldMin:12, goldMax:18, isBoss:true, immuneToCrit:true },
+  { name:"Dark_Lord",         emoji:"🐷", maxHp:40, attack:12, armor:8, hitChance:100, dodgeChance:30, xp:10, goldMin:15, goldMax:25, isBoss:true, poisonOnHit:true, immuneToCrit:true },
 ];
 
 const SHOP_CONSUMABLES = [
   { id:"potion",     label:"HEALTH POTION",    desc:"RESTORE 4 HP",              cost:3,  onUse:(p,b)=>({p:{...p,hp:Math.min(p.hp+4,p.maxHp)},b}) },
-  { id:"elixir",     label:"ELIXIR",           desc:"ALL HP + CURE POISON",      cost:6,  curePoison:true, onUse:(p,b)=>({p:{...p,hp:p.maxHp},b}) },
-  { id:"megapotion", label:"MEGA POTION",       desc:"RESTORE 8 HP",              cost:9,  onUse:(p,b)=>({p:{...p,hp:Math.min(p.hp+8,p.maxHp)},b}) },
-  { id:"antidote",   label:"ANTIDOTE",         desc:"CURE ALL STATUS EFFECTS",   cost:4,  cureAll:true, onUse:(p,b)=>({p,b}) },
-  { id:"oil",        label:"BATTLE OIL",        desc:"+10% HIT · 1 BATTLE",       cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'hitChance',   val:10,battles:1}]}) },
-  { id:"whetstone",  label:"WHETSTONE",         desc:"+2 ATK · 1 BATTLE",         cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:2, battles:1}]}) },
-  { id:"scroll",     label:"CRIT SCROLL",       desc:"+10% CRIT · 1 BATTLE",      cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:10,battles:1}]}) },
-  { id:"smokebomb",  label:"SMOKE BOMB",        desc:"+20% DODGE · 1 BATTLE",     cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'dodgeChance', val:20,battles:1}]}) },
-  { id:"talisman",   label:"GUARD TALISMAN",    desc:"+2 ARMOR · 1 BATTLE",       cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'armor',       val:2, battles:1}]}) },
-  { id:"oil2",       label:"FINE BATTLE OIL",   desc:"+15% HIT · 2 BATTLES",      cost:6,  onUse:(p,b)=>({p,b:[...b,{stat:'hitChance',   val:15,battles:2}]}) },
-  { id:"whetstone2", label:"KEEN WHETSTONE",    desc:"+3 ATK · 2 BATTLES",        cost:7,  onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:3, battles:2}]}) },
-  { id:"scroll2",    label:"GREAT CRIT SCROLL", desc:"+15% CRIT · 2 BATTLES",     cost:7,  onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:15,battles:2}]}) },
-  { id:"cloak",      label:"SHADOW CLOAK",      desc:"+30% DODGE · 2 BATTLES",    cost:8,  onUse:(p,b)=>({p,b:[...b,{stat:'dodgeChance', val:30,battles:2}]}) },
-  { id:"whetstone3", label:"MASTER WHETSTONE",  desc:"+4 ATK · 3 BATTLES",        cost:12, onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:4, battles:3}]}) },
-  { id:"scroll3",    label:"ANCIENT SCROLL",    desc:"+20% CRIT · 3 BATTLES",     cost:12, onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:20,battles:3}]}) },
+  { id:"elixir",     label:"ELIXIR",           desc:"ALL HP + CURE ALL STATUS EFFECTS",      cost:20,  cureAll:true, onUse:(p,b)=>({p:{...p,hp:p.maxHp},b}) },
+  { id:"potion2", label:"MEGA POTION",       desc:"RESTORE 8 HP",              cost:9,  onUse:(p,b)=>({p:{...p,hp:Math.min(p.hp+8,p.maxHp)},b}) },
+  { id:"potion3", label:"SUPER POTION",       desc:"RESTORE 16 HP",              cost:15,  onUse:(p,b)=>({p:{...p,hp:Math.min(p.hp+16,p.maxHp)},b}) },
+  { id:"antidote",   label:"ANTIDOTE",         desc:"CURE POISON",   cost:3,  curePoison:true, onUse:(p,b)=>({p,b}) },
+  { id:"ointment",   label:"OINTMENT",         desc:"HEAL BURN",   cost:3,  cureBurn:true, onUse:(p,b)=>({p,b}) },
+  { id:"Band-aid",   label:"BANDAID",         desc:"STOP BLEEDING",   cost:3,  cureBleed:true, onUse:(p,b)=>({p,b}) },
+  { id:"Salt",   label:"SMELLING SALT",         desc:"CURE STUN",   cost:3,  cureStun:true, onUse:(p,b)=>({p,b}) },
+  { id:"oil",        label:"BATTLE OIL",        desc:"10% HIT · 1 BATTLE",       cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'hitChance',   val:10,battles:1}]}) },
+  { id:"whetstone",  label:"WHETSTONE",         desc:"2 ATK · 1 BATTLE",         cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:2, battles:1}]}) },
+  { id:"scroll",     label:"CRIT SCROLL",       desc:"10% CRIT · 1 BATTLE",      cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:10,battles:1}]}) },
+  { id:"smokebomb",  label:"SMOKE BOMB",        desc:"20% DODGE · 1 BATTLE",     cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'dodgeChance', val:20,battles:1}]}) },
+  { id:"talisman",   label:"GUARD TALISMAN",    desc:"2 ARMOR · 1 BATTLE",       cost:3,  onUse:(p,b)=>({p,b:[...b,{stat:'armor',       val:2, battles:1}]}) },
+  { id:"oil2",       label:"FINE BATTLE OIL",   desc:"15% HIT · 2 BATTLES",      cost:6,  onUse:(p,b)=>({p,b:[...b,{stat:'hitChance',   val:15,battles:2}]}) },
+  { id:"whetstone2", label:"KEEN WHETSTONE",    desc:"3 ATK · 2 BATTLES",        cost:7,  onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg',      val:3, battles:2}]}) },
+  { id:"scroll2",    label:"GREAT CRIT SCROLL", desc:"15% CRIT · 2 BATTLES",     cost:7,  onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:15,battles:2}]}) },
+  { id:"whetstone3", label:"MASTER WHETSTONE",  desc:"4 ATK + 20% HIT · 3 BATTLES", cost:12, onUse:(p,b)=>({p,b:[...b,{stat:'atkDmg', val:4, battles:3}, {stat:'hitChance', val:20, battles:3}]}) },
+  { id:"scroll3",    label:"ANCIENT SCROLL",    desc:"20% CRIT + 30% DODGE · 3 BATTLES",     cost:12, onUse:(p,b)=>({p,b:[...b,{stat:'critChance',  val:20,battles:3},{stat:'dodgeChance', val:30,battles:2}]}) },
 ];
 
 const DICE_PROGRESSION = (() => {
   const d = (c,s) => ({ count:c, size:s, label:c>1?`${c}D${s}`:`D${s}` });
-  const p = [
-    d(1,2),d(1,4),d(1,6),d(1,8),d(1,10),
-    d(2,4),d(1,12),d(2,6)
-  ];
-  for (let n=5; n<=40; n++) for (const s of [4,6,8,10]) p.push(d(n,s));
-  return p;
+  const p=[];
+  for (let n=1; n<=5; n++) for (const s of [4,6,8,10,12,20]) p.push(d(n,s));
+  return p.sort((a, b) => (a.count * a.size) - (b.count * b.size));
 })();
 
 const EQUIPMENT_DEFS = [
@@ -176,7 +179,9 @@ const BODY_SLOTS = [
 
 const EMPTY_EQUIP = { ...Object.fromEntries(BODY_SLOTS.map(s=>[s.key,null])), rings:[] };
 const STAT_LABEL  = { atkDmg:'ATK', armor:'ARM', hitChance:'HIT', dodgeChance:'DOD', critChance:'CRT', maxHp:'MAX HP', greedPenalty:'DMG TAKEN', strength:'STR', dexterity:'DEX', constitution:'CON', wisdom:'WIS', charisma:'CHA', intelligence:'INT' };
-const WAVE_LENGTH = 5;
+const WAVE_LENGTH = 10;
+
+const [restUsed, setRestUsed] = useState(false);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -241,13 +246,13 @@ function applyAbilityStats(p) {
   out.maxHp       = baseHp + equipBonus;
   out.hp          = Math.min(out.hp, out.maxHp);
   out.atkDmg      = Math.max(0,out.atkDmg + str);
-  out.hitChance   = clamp(out.hitChance + str*5,5,120);
-  out.dodgeChance = clamp(out.dodgeChance + dex*5,0,75);
+  out.hitChance   = clamp(out.hitChance + str*5,5,200);
+  out.dodgeChance = clamp(out.dodgeChance + dex*5,0,100);
   out.critChance  = clamp(out.critChance + dex*5,0,80);
-  out.poisonResist= clamp((out.poisonResist||0)+Math.max(0,con)*5,0,75);
-  out.awareness   = clamp((out.awareness||0)+Math.max(0,wis)*15,0,95);
-  out.identify    = clamp((out.identify||0)+Math.max(0,int)*15,0,95);
-  out.shopDiscount= clamp((out.shopDiscount||0)+Math.max(0,cha)*5,0,40);
+  out.poisonResist= clamp((out.poisonResist||0)+Math.max(0,con)*5,0,100);
+  out.awareness   = clamp((out.awareness||0)+Math.max(0,wis)*15,0,100);
+  out.identify    = clamp((out.identify||0)+Math.max(0,int)*15,0,100);
+  out.shopDiscount= clamp((out.shopDiscount||0)+Math.max(0,cha)*5,0,100);
   return out;
 }
 
@@ -384,64 +389,95 @@ function pickBoss(waveNumber, level) {
 // ─── Combat ───────────────────────────────────────────────────────────────────
 
 function playerAttack(p, e, verbose=false) {
-  const results=[];
-  // Each swinging weapon contributes one swing using its own die and procs. Falls back to fists if no weapon equipped.
-  const weapons = (p.weapons && p.weapons.length) ? p.weapons : [{ dieIdx:p.dieIdx, procs:{} }];
-  const bleedMult = (e.bleed||0) > 0 ? 1.5 : 1;
-  const amplify = dmg => bleedMult>1 ? Math.ceil(dmg*bleedMult) : dmg;
-  let didPoison=false, didBurn=false, didBleed=false;
-  const doSwing = (weapon) => {
+  const results = [];
+  const weapons = (p.weapons && p.weapons.length) ? p.weapons : [{ dieIdx: p.dieIdx, procs: {} }];
+
+  // 1. BLEED LOGIC: Damage increases based on how "bad" the current bleed is
+  const bleedBonus = e.bleed || 0;
+  const applyBleed = dmg => dmg + Math.floor(bleedBonus);
+
+  let didPoison = false, didBurn = false, didBleed = false;
+  let newBleedVal = 0;
+
+  const doSwing = (weapon, isOffhand = false) => {
     const procs = weapon.procs || {};
-    const {rolled,hit} = d20Hit(p.hitChance-e.dodgeChance);
-    const wouldCrit    = rolled >= 20-p.critChance/5;
+    const { rolled, hit } = d20Hit(p.hitChance - e.dodgeChance);
+    const wouldCrit = rolled >= 20 - p.critChance / 5;
+
     if (!hit && !wouldCrit) {
-      results.push({type:"miss", text:`${rolled}! ${e.dodgeChance>0?"DODGE!":"MISS!"}`});
-      return null;
+      results.push({ type: "miss", text: `${rolled}! ${e.dodgeChance > 0 ? "DODGE!" : "MISS!"}` });
+      return 0;
     }
+
     const procPierce = procs.pierceChance > 0 && pct(procs.pierceChance);
     const r1 = rollDiceV(weapon.dieIdx);
     let dmg;
-    if (wouldCrit && hit) {
-      if (e.immuneToCrit) {
-        const armorUsed = procPierce ? 0 : e.armor;
-        dmg = amplify(Math.max(0,p.atkDmg+r1.total-armorUsed));
-        results.push({type:"player", text:`${rolled}! CRIT BLOCKED!${procPierce&&e.armor>0?" PIERCED!":""}${verbose?` ${r1.text}`:""} ${dmg} DMG`});
-      } else {
-        const armorUsed = (procPierce || p.armorPierce) ? 0 : e.armor;
-        const r2  = rollDiceV(weapon.dieIdx);
-        const pierced = (procPierce || p.armorPierce) && e.armor>0;
-        dmg = amplify(Math.max(0,p.atkDmg+r1.total+r2.total-armorUsed));
-        results.push({type:"crit", text:`${rolled}! ★ CRIT!${pierced?" PIERCED!":""}${verbose?` ${r1.text}+${r2.text}`:""} ${dmg} DMG!`});
-      }
+
+    // 2. CRIT & DAMAGE CALCULATION
+    const armorUsed = (procPierce || (wouldCrit && p.armorPierce)) ? 0 : e.armor;
+
+    if (wouldCrit && hit && !e.immuneToCrit) {
+      const r2 = rollDiceV(weapon.dieIdx);
+      dmg = p.atkDmg + r1.total + r2.total - armorUsed;
+      results.push({ type: "crit", text: `${rolled}! ★ CRIT! ${dmg} DMG!` });
     } else {
-      const armorUsed = procPierce ? 0 : e.armor;
-      dmg = amplify(Math.max(0,p.atkDmg+r1.total-armorUsed));
-      results.push({type:"player", text:`${rolled}! ${wouldCrit?"AUTO-HIT! ":"HIT! "}${verbose?`${r1.text} `:""}${dmg} DMG${dmg===0?" (BLOCKED)":procPierce&&e.armor>0?" PIERCED!":""}`});
+      dmg = p.atkDmg + r1.total - armorUsed;
+      const typeText = wouldCrit ? "AUTO-HIT!" : "HIT!";
+      results.push({ type: "player", text: `${rolled}! ${typeText} ${Math.max(0, dmg)} DMG` });
     }
-    if (dmg>0) {
-      if (procs.poisonChance && pct(procs.poisonChance)) didPoison=true;
-      if (procs.burnChance   && pct(procs.burnChance))   didBurn=true;
-      if (procs.bleedChance  && pct(procs.bleedChance))  didBleed=true;
+
+    dmg = Math.max(0, dmg);
+
+    // 3. OFFHAND PENALTY: 50% damage unless they have the Dual Wield Perk
+    if (isOffhand && !p.dualWield) {
+      dmg = Math.floor(dmg * 0.5);
+    }
+
+    // Apply the current bleed bonus damage to the final result
+    dmg = applyBleed(dmg);
+
+    // 4. BLEED PROC: Set to weapon's average damage (Die Average + ATK)
+    if (dmg > 0) {
+      if (procs.poisonChance && pct(procs.poisonChance)) didPoison = true;
+      if (procs.burnChance && pct(procs.burnChance)) didBurn = true;
+      if (procs.bleedChance && pct(procs.bleedChance)) {
+        didBleed = true;
+        const die = getDie(weapon.dieIdx);
+        // Average of a die is (max + 1) / 2. Example: D6 average is 3.5
+        const avgWeaponDmg = ((die.count * (die.size + 1)) / 2) + p.atkDmg;
+        newBleedVal = avgWeaponDmg;
+      }
     }
     return dmg;
   };
+
+  // --- Execute Swings ---
   let total = 0;
-  weapons.forEach((w,i)=>{
-    if (i===1) results.push({type:"player", text:"⚔ OFFHAND STRIKE!"});
-    total += doSwing(w) || 0;
-  });
-  // Double/triple strike adds extra swings of the main weapon on top.
-  const dbl  = p.doubleStrikeChance||0;
-  const tpl  = p.tripleStrikeChance||0;
-  if (dbl>=100 || (dbl>0&&pct(dbl))) {
-    results.push({type:"player", text:tpl>0?"⚔⚔⚔ DOUBLE STRIKE!":"⚔⚔ DOUBLE STRIKE!"});
-    total += doSwing(weapons[0]) || 0;
-    if (tpl>0 && pct(tpl)) {
-      results.push({type:"player", text:"⚔⚔⚔ TRIPLE STRIKE!"});
-      total += doSwing(weapons[0]) || 0;
-    }
+
+  // Main Strike
+  total += doSwing(weapons[0], false);
+
+  // Offhand Strike (Standard Dual Wielding)
+  if (weapons.length > 1) {
+    results.push({ type: "player", text: "⚔ OFFHAND STRIKE!" });
+    total += doSwing(weapons[1], true);
   }
-  return { total, results, didPoison, didBurn, didBleed };
+
+  // 5. MULTI-STRIKE LOGIC
+  // Double Strike uses Main Hand
+  if (pct(p.doubleStrikeChance)) {
+    results.push({ type: "player", text: "⚔⚔ DOUBLE STRIKE!" });
+    total += doSwing(weapons[0], false);
+  }
+
+  // Triple Strike uses Offhand
+  if (pct(p.tripleStrikeChance)) {
+    results.push({ type: "player", text: "⚔⚔⚔ TRIPLE STRIKE!" });
+    // If no offhand weapon is equipped, it defaults to fists/main weapon stats
+    total += doSwing(weapons[1] || weapons[0], true);
+  }
+
+  return { total, results, didPoison, didBurn, didBleed, newBleedVal };
 }
 
 function enemyAttack(p, e, verbose=false) {
@@ -736,9 +772,10 @@ function App() {
   }
 
   function pickStat(stat) {
-    const next=[...pickedStats,stat];
-    setPickedStats(next);
-    if (next.length>=1) { const updated=stat.apply({...player}); setPlayer(updated); setRoomChoices(makeRoomChoices(wavePos,applyAbilityStats(updated),devMode,level,waveNumber)); setPhase("win"); }
+    const updated=stat.apply({...player});
+    setPlayer(updated);
+    setRoomChoices(makeRoomChoices(wavePos,applyAbilityStats(updated),devMode,level,waveNumber));
+    setPhase("win");
   }
 
   function pickPerk(perk) {
@@ -749,12 +786,11 @@ function App() {
   }
 
   function enterRest() {
-    setRestXpLost(xp);
-    setXp(0);
+    // We no longer reset XP here
     setEnemy(null);
     setPhase("rest");
+    setRestUsed(true);
   }
-
   function startBattle(room) {
     const newPos = wavePos+1;
     const isBoss = !!room?.isBoss || newPos>=WAVE_LENGTH;
@@ -824,6 +860,9 @@ function App() {
     const {p:usedPlayer,b:nb} = item.onUse({...player,maxHp:effectiveMaxHp},tempBuffs);
     const np = {...usedPlayer,maxHp:player.maxHp};
     if (item.curePoison) setPoison(0);
+    if (item.cureBurn) setBurn(0);
+    if (item.cureBleed) setBleed(0);
+    if (item.cureStun) setStun(0);
     if (item.cureAll)    { setPoison(0); setBurn(0); setBleed(0); setStun(0); }
     setPlayer(np); setTempBuffs(nb);
     setGameStats(s=>({...s,itemsUsed:{...s.itemsUsed,[item.label]:(s.itemsUsed[item.label]||0)+1}}));
@@ -863,7 +902,7 @@ function App() {
         const newHp=curP.hp-1, left=poison-1;
         setPoison(left);
         addLog(`☠ POISON! 1 DMG!${left>0?` (${left} LEFT)`:" CURED!"}`, "warn");
-        if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); setPhase("lose"); addLog("POISON CLAIMED YOUR LIFE...","warn"); return; }
+        if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); saveHighScore(gold); setPhase("lose"); addLog("POISON CLAIMED YOUR LIFE...","warn"); return; }
         curP={...curP,hp:newHp};
         setPlayer(prev=>({...prev,hp:newHp}));
       }
@@ -873,7 +912,7 @@ function App() {
         const newHp=curP.hp-2, left=burn-1;
         setBurn(left);
         addLog(`🔥 BURN! 2 DMG!${left>0?` (${left} LEFT)`:" FADED!"}`, "warn");
-        if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); setPhase("lose"); addLog("THE FLAMES TOOK YOU...","warn"); return; }
+        if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); saveHighScore(gold); setPhase("lose"); addLog("THE FLAMES TOOK YOU...","warn"); return; }
         curP={...curP,hp:newHp};
         setPlayer(prev=>({...prev,hp:newHp}));
       }
@@ -920,7 +959,7 @@ function App() {
 
       let newHp=curP.hp-dmgToPlayer;
       if (newHp<=0&&curP.ironWill&&!ironUsed) { newHp=1; setIronUsed(true); addLog("IRON WILL! SURVIVED WITH 1 HP!","level"); }
-      if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); setPhase("lose"); addLog("YOU HAVE FALLEN...","warn"); }
+      if (newHp<=0) { setPlayer(prev=>({...prev,hp:0})); saveHighScore(gold); setPhase("lose"); addLog("YOU HAVE FALLEN...","warn"); }
       else {
         setPlayer(prev=>({...prev,hp:newHp}));
         if (didStun) {
@@ -959,6 +998,7 @@ function App() {
       addLog(`${defeatedEnemy.name} DEFEATED! +${goldEarned} 💰`,"gold");
       const nextRoomPos = defeatedEnemy.isBoss ? 0 : (defeatedEnemy.roomPos??wavePos);
       const nextWaveNum = defeatedEnemy.isBoss ? waveNumber+1 : waveNumber;
+      setRestUsed(false);
       if (defeatedEnemy.isBoss) { setWavePos(0); setWaveNumber(n=>n+1); }
       setRoomChoices(makeRoomChoices(nextRoomPos,getEffectivePlayer(nextPlayer,equipment),devMode,newLevel,nextWaveNum));
       if (newLevel>=21) { saveHighScore(gold+goldEarned); setEnemy(null); setPhase("gamewon"); return; }
@@ -1091,7 +1131,7 @@ function App() {
           {phase==="gamewon" && (
             <TileBox highlight style={{ textAlign:"center", padding:24 }}>
               <div style={{ color:"#f8e000", fontSize:12, marginBottom:6, animation:"blink 0.8s infinite" }}>★ DUNGEON CLEARED! ★</div>
-              <div style={{ color:"#80d0f8", fontSize:8, marginBottom:20, lineHeight:2.4 }}>LEVEL 20 REACHED!<br />FINAL GOLD: 💰 {gold}</div>
+              <div style={{ color:"#80d0f8", fontSize:8, marginBottom:20, lineHeight:2.4 }}>LEVEL {level} REACHED!<br />FINAL GOLD: 💰 {gold}</div>
               <div style={{ textAlign:"left", fontSize:8, color:"#5a4a18", lineHeight:2.4, marginBottom:20 }}>
                 {gameStats.biggestHit>0      && <div>⚔ BIGGEST HIT: <span style={{color:"#50d850"}}>{gameStats.biggestHit} DMG</span></div>}
                 {gameStats.biggestHitTaken>0 && <div>💥 BIGGEST HIT TAKEN: <span style={{color:"#e04040"}}>{gameStats.biggestHitTaken} DMG</span></div>}
