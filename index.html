@@ -20,7 +20,7 @@ const { useState, useEffect, useRef } = React;
 const PLAYER_BASE = {
   name:"Hero", emoji:"🧝",
   hp:4, hitDice:[8],
-  armor:1, atkDmg:3, dieIdx:0,
+  armor:1, atkDmg:0, dieIdx:0,
   hitChance:90, dodgeChance:0, critChance:5,
   strength:10, dexterity:10, constitution:10,
   wisdom:10, charisma:10, intelligence:10,
@@ -50,21 +50,21 @@ const PERK_POOL = [
 ];
 
 const ENEMY_DEFS = {
-  Goblin:    { emoji:"👺", niche:"FODDER",       maxHp:4,  attack:0, armor:0, hitChance:55, dodgeChance:0,  xp:1, goldMin:1, goldMax:2 },
+  Goblin:    { emoji:"👺", niche:"FODDER",       maxHp:3,  attack:0, armor:0, hitChance:65, dodgeChance:0,  xp:1, goldMin:1, goldMax:2 },
   Boar:  { emoji:"🐗", niche:"ACCURATE",     maxHp:5,  attack:1, armor:0, hitChance:85, dodgeChance:0,  xp:1, goldMin:1, goldMax:3 },
   Zombie:     { emoji:"🧟", niche:"TANK",         maxHp:12, attack:1, armor:0, hitChance:50, dodgeChance:0,  xp:2, goldMin:2, goldMax:4 },
   Giant_Lizard:  { emoji:"🦎", niche:"EVASIVE",      maxHp:5,  attack:2, armor:0, hitChance:65, dodgeChance:40, xp:2, goldMin:2, goldMax:4 },
   Dark_Wizard:  { emoji:"🧙", niche:"GLASS CANNON", maxHp:3,  attack:5, armor:0, hitChance:80, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
-  Fairy:     { emoji:"🦋", niche:"ARMORED",      maxHp:7,  attack:2, armor:2, hitChance:55, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
+  Fairy:     { emoji:"🧚‍♂️", niche:"ARMORED",      maxHp:7,  attack:2, armor:2, hitChance:55, dodgeChance:0,  xp:2, goldMin:3, goldMax:5 },
   Cursed_Sword:   { emoji:"🗡️", niche:"HEAVY ARMOR",  maxHp:8,  attack:3, armor:4, hitChance:55, dodgeChance:0,  xp:3, goldMin:4, goldMax:6 },
-  Ghost:    { emoji:"🌪️", niche:"SWIFT",        maxHp:4,  attack:3, armor:0, hitChance:70, dodgeChance:40, xp:3, goldMin:3, goldMax:6 },
+  Ghost:    { emoji:"👻", niche:"SWIFT",        maxHp:4,  attack:3, armor:0, hitChance:70, dodgeChance:40, xp:3, goldMin:3, goldMax:6 },
   Skeleton:   { emoji:"💀", niche:"DEADEYE",      maxHp:6,  attack:3, armor:1, hitChance:95, dodgeChance:0,  xp:3, goldMin:3, goldMax:6 },
   // New enemies
   Archer:    { emoji:"🏹", niche:"SKIRMISHER",   maxHp:4,  attack:1, armor:0, hitChance:90, dodgeChance:25, xp:2, goldMin:2, goldMax:4, fleesWhenLow:true },
   Berserker: { emoji:"🪓", niche:"BERSERKER",    maxHp:9,  attack:2, armor:0, hitChance:60, dodgeChance:0,  xp:3, goldMin:3, goldMax:6, enragesWhenLow:true },
-  Phantom:    { emoji:"🌑", niche:"CURSED",       maxHp:6,  attack:3, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:2, goldMax:5, bleedsOnCrit:true },
-  Imp:     { emoji:"🦇", niche:"FIRE BAT",     maxHp:3,  attack:2, armor:0, hitChance:75, dodgeChance:15, xp:2, goldMin:2, goldMax:4, burnsOnHit:true },
-  Ogre: { emoji:"🫧", niche:"STUNNING",    maxHp:5,  attack:2, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:3, goldMax:5, stunsOnHit:true },
+  Phantom:    { emoji:"🫥", niche:"CURSED",       maxHp:6,  attack:3, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:2, goldMax:5, bleedsOnCrit:true },
+  Imp:     { emoji:"😈", niche:"FIRE BAT",     maxHp:3,  attack:2, armor:0, hitChance:75, dodgeChance:15, xp:2, goldMin:2, goldMax:4, burnsOnHit:true },
+  Ogre: { emoji:"👹", niche:"STUNNING",    maxHp:5,  attack:2, armor:1, hitChance:70, dodgeChance:0,  xp:2, goldMin:3, goldMax:5, stunsOnHit:true },
 };
 
 const WAVES = [
@@ -84,10 +84,10 @@ const WAVE_BOSSES = [
 ];
 
 const BOSS_DEFS = [
-  { name:"Dragon",        emoji:"🐲", maxHp:20, attack:7, armor:5, hitChance:100, dodgeChance:15, xp:5,  goldMin:8,  goldMax:12, isBoss:true },
-  { name:"Giant Cactus",     emoji:"🌵", maxHp:25, attack:8, armor:4, hitChance:100, dodgeChance:15,  xp:6,  goldMin:10, goldMax:16, isBoss:true, poisonOnHit:true },
-  { name:"PHANTOM Lord", emoji:"👻", maxHp:30, attack:9, armor:0, hitChance:100, dodgeChance:60, xp:7,  goldMin:12, goldMax:18, isBoss:true, immuneToCrit:true },
-  { name:"Dark_Lord",         emoji:"🐷", maxHp:40, attack:12, armor:8, hitChance:100, dodgeChance:30, xp:10, goldMin:15, goldMax:25, isBoss:true, poisonOnHit:true, immuneToCrit:true },
+  { name:"Dragon",        emoji:"🐲", maxHp:20, attack:7, armor:5, hitChance:105, dodgeChance:15, xp:5,  goldMin:8,  goldMax:12, isBoss:true },
+  { name:"Giant Cactus",     emoji:"🌵", maxHp:30, attack:8, armor:4, hitChance:110, dodgeChance:10,  xp:6,  goldMin:10, goldMax:16, isBoss:true, poisonOnHit:true },
+  { name:"PHANTOM Lord", emoji:"👻", maxHp:30, attack:10, armor:0, hitChance:120, dodgeChance:80, xp:7,  goldMin:12, goldMax:18, isBoss:true, immuneToCrit:true },
+  { name:"Dark_Lord",         emoji:"🐷", maxHp:50, attack:12, armor:8, hitChance:150, dodgeChance:20, xp:10, goldMin:15, goldMax:25, isBoss:true, poisonOnHit:true, immuneToCrit:true },
 ];
 
 const SHOP_CONSUMABLES = [
