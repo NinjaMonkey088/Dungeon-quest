@@ -6,36 +6,120 @@ The game should feel fast, readable, charming, and arcade-like. Preserve the 8-b
 
 ## Core Experience
 
-The player chooses a room (small / big / bridge / stairs / shrine) from a dungeon map, fights a single enemy in that room, earns XP and gold, levels up, picks an attribute upgrade, eventually faces a boss at the end of the wave, and unlocks the shop. The dungeon clears at level 21.
+The player chooses a room (small / big / bridge / stairs / shrine) from a dungeon map, fights a single enemy in that room, earns XP and gold, levels up, picks an attribute upgrade or milestone perk, eventually faces a boss at the end of the wave, and unlocks the shop. The dungeon clears at level 21.
 
-Each combat is a turn-based duel: player swings (d20-to-hit, dice damage, optional double/triple strike, optional crit), then enemy swings (d20-to-hit, d3 base damage, optional poison/burn/bleed/stun proc, optional counter from the player). Status effects tick at the start of each enemy turn.
+Each combat is a turn-based duel: player swings (d20-to-hit, dice damage, optional double/triple strike, optional crit, optional weapon procs), then enemy swings (d20-to-hit, d3 base damage, optional poison/burn/bleed/stun proc, optional counter from the player). Status effects tick at the start of each enemy turn.
 
 Keep the game playable directly from the HTML file unless a requested feature truly requires a build system.
 
 ## Mechanics Overview
 
-- **Attributes** (D&D-style, default 10, mod = floor((score-10)/2)):
-  - `strength` → +ATK and +5% HIT per mod
-  - `dexterity` → +5% DODGE and +5% CRIT per mod
-  - `constitution` → +2 MAX HP and +5% poison resist per +2 score
-  - `wisdom` → +15% room awareness per mod (reveals room types on the dungeon map)
-  - `charisma` → -5% shop prices per mod
-  - `intelligence` → +15% identify per mod (shows full equipment stats in shop)
-- **Level-up**: pick 1 attribute from the full STAT_POOL list. Half-max-HP heal on level up. XP needed = `level * 3`.
-- **Threshold unlocks** (one-time, at exact level): 5 → Double Strike (25%, scales via STAT_POOL), 10 → Iron Will (survive a killing blow once at 1 HP), 15 → Armor Pierce (crits ignore armor).
-- **Combat dice**: `dieIdx` indexes into `DICE_PROGRESSION` (D2 → 40D10). Player damage = `atkDmg + dice roll - enemy.armor`; crit doubles the dice roll. Enemy damage = `attack + d3 - player.armor + greedPenalty`.
-- **Status effects** (all decay over turns, applied by specific enemies):
-  - ☠ Poison — 1 dmg / turn for 3 turns. Resisted by CON.
-  - 🔥 Burn — 2 dmg / turn for 3 turns.
-  - 🩸 Bleed — +50% incoming damage for 3 turns. Applied by Cursed on crit.
-  - 💫 Stun — skip your next turn (auto-runs another enemy turn).
-- **Wave structure**: 5 rooms per wave, room 5 is a boss. Defeating a boss advances the wave, unlocks the shop, and reshuffles room types.
-- **Bosses**: `WAVE_BOSSES` for waves 1–4 (King Bokoblin, Mummy Lord, Arch Wizzrobe, Iron Darknut). Waves 5+ cycle through `BOSS_DEFS` (Gleeok, Manhandla, Phantom Ganon, Ganon) with scaling and "ELDER" prefix at deep cycles.
-- **Equipment**: 12 body slots + 5 ring slots. Weapons (Iron Sword / Heavy Mace / Vampiric Blade), armor pieces, two cloak variants (Shadow vs Dodge tradeoff), and 7 ring types including Ring of Greed (+50% gold, +2 dmg taken).
-- **Consumables**: HP potions, antidote (cures all status), elixir, and timed buff items (oils, whetstones, scrolls, smoke bomb, talisman, cloak) granting 1–3 battles of stat boosts.
-- **Rest / Flee**: 75% chance to flee a battle. Flee or rest forfeits current XP and full-heals + clears all status.
-- **Identify gating**: Equipment in the shop shows generic descriptions ("COMBAT GEAR · EXACT POWER UNCLEAR") until your `identify` (from INT) reaches 50%.
-- **Awareness gating**: Room types on the map start hidden as `?` — WIS reveals them.
+### Attributes (D&D-style, default 10, mod = floor((score-10)/2))
+- `strength` → +ATK and +5% HIT per mod
+- `dexterity` → +5% DODGE and +5% CRIT per mod
+- `constitution` → +2 MAX HP and +5% poison resist per +2 score (applied retroactively via `hitDice` history)
+- `wisdom` → +15% room awareness per mod (reveals room types on the dungeon map)
+- `charisma` → -5% shop prices per mod
+- `intelligence` → +15% identify per mod (shows full equipment stats in shop)
+
+### HP System
+- `hitDice` is a per-level d8 roll history. Level 1 always starts with `[8]`.
+- Each level-up rolls a new d8 and appends to `hitDice`.
+- Effective `maxHp = floor((sum(hitDice) + conMod × hitDice.length) / 2) + equipmentBonus`
+- CON changes apply retroactively to all past levels.
+- Equipment `maxHp` bonuses are summed in `applyEquipment` before `applyAbilityStats` adds the CON-scaled dice result.
+
+### Level-up & Perks
+- On each level-up, pick 1 attribute from `STAT_POOL`. Half-max-HP heal on level up. XP needed = `level * 3`.
+- Every 5th level (levels 5, 10, 15, 20), a **Milestone Perk** screen appears first (`phase = "perk"`). Pick from `PERK_POOL` — each perk is one-shot and removed from future offers after being picked.
+- **PERK_POOL** perks:
+  - `doubleStrikeChance` → ★ Double Strike: 25% chance to attack twice
+  - `ironWill` → ★ Iron Will: survive a killing blow with 1 HP once per battle
+  - `armorPierce` → ★ Armor Pierce: crits ignore all enemy armor
+  - `dualWield` → ★ Dual Wield: equip two light weapons, both strike independently each attack
+
+### Weapon System
+- Weapons have a `hand` field controlling slot rules:
+  - `'light'` — light 1H; dual-wieldable (can also go in offhand with `dualWield` perk)
+  - `'one'` — standard 1H; compatible with shields in offhand
+  - `'two'` — 2H; **blocks the offhand slot entirely** (shield or weapon)
+- Base weapons (in `EQUIPMENT_DEFS`, slot `"weapon"`): Dagger (D4 light), Shortsword (D6 light), Longsword (D8 one), Spear (D10 two), Greatsword (2D6 two)
+- Rare weapons (`rare: true`, shop bias 25%): Sharp Dagger, Keen Shortsword, Venom Dagger (poison proc), Flame Brand (burn proc), Piercing Longsword (pierce proc), Bleeding Spear (bleed proc), Vampiric Blade (heal 2 HP on crit)
+- Weapon **procs** are defined in `item.procs = { poisonChance, burnChance, bleedChance, pierceChance }`. Procs only trigger on hit (dmg > 0).
+- Shields (slot `"offhand"`): Buckler (+1 ARM +5% DOD), Iron Shield (+2 ARM), Tower Shield (+3 ARM −5% DOD). Incompatible with 2H weapons.
+
+### Dual Wield
+- Requires the `dualWield` perk AND a `hand: 'light'` main weapon equipped.
+- `applyEquipment` sets `out.weapons = [main, offhand]` when both are light weapons.
+- `playerAttack` iterates `p.weapons`, each swinging with its own die and procs. An "OFFHAND STRIKE!" log line precedes the second swing.
+- `canEquipItem` gates offhand weapon purchases: requires `dualWield` perk + light main weapon; 2H main blocks all offhand.
+
+### Combat Dice
+- `dieIdx` indexes into `DICE_PROGRESSION` (D2 → 40D10, ~170 entries).
+- Player damage = `atkDmg + dice roll − enemy.armor`; crit doubles the dice roll (both rolls printed in verbose/dev mode).
+- Enemy damage = `attack + d3 − player.armor + greedPenalty`.
+- `verbose=true` (enabled in devMode) adds dice detail to log lines.
+
+### Status Effects (all decay over turns)
+- ☠ **Poison** — 1 dmg / turn for 3 turns. Applied by Manhandla boss, Ganon boss, or Venom Dagger proc. Resisted by CON (`poisonResist`).
+- 🔥 **Burn** — 2 dmg / turn for 3 turns. Applied by Keese enemy (`burnsOnHit`) or Flame Brand proc.
+- 🩸 **Bleed** — +50% incoming damage for 3 turns. Applied by Cursed enemy on crit (`bleedsOnCrit`) or Bleeding Spear proc. Bleed amplifies damage dealt **to the bleeder** (enemy or player).
+- 💫 **Stun** — skip your next turn (auto-runs another enemy turn). Applied by Like-Like (`stunsOnHit`, 30% chance).
+- Enemy status ticks happen **before** the enemy attacks in `runEnemyTurn` (enemy poison → enemy burn → enemy bleed decrement). Player status ticks follow immediately after (player poison → player burn → player bleed decrement), also before the enemy attack roll.
+
+### Enemies
+Full list in `ENEMY_DEFS` (name → niche):
+- `MOBLIN` (Fodder), `BOKOBLIN` (Accurate), `GIBDO` (Tank), `LIZALFOS` (Evasive)
+- `WIZZROBE` (Glass Cannon), `PATRA` (Armored), `DARKNUT` (Heavy Armor)
+- `PEAHAT` (Swift), `STALFOS` (Deadeye)
+- `ARCHER` (Skirmisher) — `fleesWhenLow`: flees at ≤30% HP (35% chance), grants half reward
+- `BERSERKER` (Berserker) — `enragesWhenLow`: at ≤50% HP gains +3 ATK and `enraged` flag (shown in UI)
+- `CURSED` (Cursed) — `bleedsOnCrit`: applies 3-turn bleed on critical hits
+- `KEESE` (Fire Bat) — `burnsOnHit`: applies 3-turn burn on every hit
+- `LIKE_LIKE` (Stunning) — `stunsOnHit`: 30% chance to stun on hit
+
+Enemy flags also available: `poisonOnHit`, `immuneToCrit`.
+
+### Wave Structure
+- 5 rooms per wave (WAVE_LENGTH = 5), room 5 is always a boss.
+- Defeating a boss: advance wave, `wavePos` resets to 0, shop unlocks.
+- Wave enemy pools (weighted) defined in `WAVES[0..4]`; enemies beyond wave 5 keep using wave 5 pool with scaling.
+- **WAVE_BOSSES** (waves 1–4): King Bokoblin, Mummy Lord, Arch Wizzrobe, Iron Darknut.
+- **BOSS_DEFS** (waves 5+, cycling): Gleeok, Manhandla (poison), Phantom Ganon (immuneToCrit), Ganon (poison + immuneToCrit). Each cycle past the list adds HP/ATK/gold scaling and "ELDER" prefix after 2+ repeats.
+
+### Enemy Scaling
+- `pickEnemy(level)` selects from `WAVES[clamp(level-1, 0, 4)]` weighted pool.
+- `scaleHit` ramps enemy `hitChance` toward 100 by level 15, then +1/level above 15 (counters player dodge accumulation).
+- Enemies beyond wave 5's pool gain +1 maxHp per over-level, +1 ATK per 5 over-levels.
+
+### Room Types
+`ROOM_TYPES` (small, big, bridge, stairs, shrine) each provide an optional `enemyMod(e)` function applied via `applyRoomToEnemy`:
+- **Big Room**: enemy +2 HP, +1–3 gold
+- **Bridge**: enemy +15% dodge, +2 gold max
+- **Stairs**: enemy +1 XP
+- **Shrine**: enemy −10% hit (min 30), −1 gold min
+
+Room and enemy identity on the map are hidden unless the player's `awareness` (from WIS) or `devMode` reveals them.
+
+### Shop
+- Unlocked after each boss kill.
+- Items: 3 random consumables + up to 2 equipment pieces (biased 75% common / 25% rare via `pickShopEquipment`).
+- Equipment already equipped in the same slot is filtered out (weapons/shields can be replaced; other slots only offer once per slot).
+- Dual-wield aware: if `dualWield` perk is active and player has a light main weapon, `pickShopEquipment` re-tags ~40% of light weapon picks as offhand variants.
+- `canEquipItem` greys out and shows reason text for illegal purchases (2H blocks offhand, offhand weapon requires dual-wield).
+- **Identify gating**: equipment shows a generic category ("COMBAT GEAR", "DEFENSIVE GEAR", etc.) until `identify ≥ 50%` (from INT). `describeItem(item, p)` handles this.
+- **Shop discount**: `getShopCost(item, p)` applies `p.shopDiscount` (from CHA) as a percentage reduction, minimum cost 1.
+
+### Consumables
+HP potions (4/8 HP), Elixir (full HP + cure poison), Antidote (cures all status), and timed buff items (oils, whetstones, scrolls, smoke bomb, talisman) granting 1–3 battles of stat boosts. Buffs tracked in `tempBuffs` as `{ stat, val, battles }` and decremented on each `startBattle`.
+
+### Rest / Flee
+- **Flee**: 75% chance to succeed. On success, forfeits all current XP, calls `enterRest()`. On fail, triggers an enemy turn immediately.
+- **Rest (Make Camp)**: forfeits current XP, fully heals, clears all status effects, returns to `"idle"`.
+
+### Game Stats & High Scores
+- `gameStats` state tracks: `biggestHit`, `biggestHitTaken`, `killCounts` (by enemy name), `itemsUsed` (by item label). Displayed on the game-won screen.
+- High scores (top 5 by gold) are persisted to `localStorage` as `"dq_scores"` via `saveHighScore`. Shown on the title screen.
 
 ## Technical Constraints
 
@@ -46,9 +130,55 @@ Keep the game playable directly from the HTML file unless a requested feature tr
 - When adding new content, follow the existing data-driven patterns:
   - `ENEMY_DEFS`, `WAVES`, `WAVE_BOSSES`, `BOSS_DEFS`
   - `SHOP_CONSUMABLES`, `EQUIPMENT_DEFS`
-  - `STAT_POOL`, `THRESHOLD_UNLOCKS`
+  - `STAT_POOL`, `PERK_POOL`
   - `BODY_SLOTS`, `ROOM_TYPES`, `STAT_LABEL`, `DICE_PROGRESSION`
 - Effective player stats are computed every render via `getEffectivePlayer(player, equipment, tempBuffs)` which composes `applyEquipment → applyAbilityStats → applyBuffs`. Do NOT mutate `player` with equipment/buff bonuses.
+- `ep` = effective player with temp buffs (used during combat). `idlePlayer` = effective player without buffs (used for shop pricing and gear display). `roomPlayer` = `idlePlayer` with boosted awareness/identify in devMode (used for room/shop text gating — never stored to state).
+
+## UI Components
+
+| Component | Purpose |
+|---|---|
+| `App` | Root component; all state lives here |
+| `TileBox` | Bordered tile container; `highlight` adds gold glow |
+| `Btn` | Styled button; `variant` keys into `BTN_VARIANTS` |
+| `Hearts` | Half-heart HP display |
+| `BodyLayout` | 5×8 grid of body slot icons; `onSelect` makes slots clickable |
+| `EquipDisplay` | Compact horizontal equipment icon strip |
+| `GearDetail` | Slot detail panel (item name, desc, stats, cost) |
+| `DungeonMap` | Wave progress grid + room choice icons |
+| `ItemButtons` | Renders consumable use buttons |
+
+`BTN_VARIANTS`: attack, flee, neutral, stat, gold, shop.
+`LOG_COLORS` types: sys, player, enemy, crit, warn, level, counter, dodge, miss, gold.
+
+## CSS & Animations
+
+All CSS is in the `CSS` string constant injected via `<style>{CSS}</style>`. Keyframes:
+- `blink`, `shake` — general utility
+- `playerSwing`, `enemySwing` — attack lunge animations
+- `getHit`, `getCrit` — damage-received flashes
+- `enemyDodge`, `playerDodge` — dodge sidestep animations
+- `bossGlow` — persistent golden glow on boss sprite
+- `missSwing` — sword swipe on a miss
+- `poisonPulse`, `burnPulse`, `stunPulse` — continuous status-effect tints on the player sprite
+
+Animations are driven by `arenaAnim = { player, enemy }` state set in `triggerArenaAnim(p, e, dur)` and cleared after `dur` ms. Status-effect pulses are always-on when the counter > 0, overriding arena idle.
+
+## Game Phase State Machine
+
+`phase` drives the UI branch rendered:
+- `"title"` → start screen
+- `"idle"` → dungeon map / room selection
+- `"player"` → player action (attack, use item, flee)
+- `"enemy"` → waiting for the 750ms enemy-turn setTimeout
+- `"perk"` → milestone perk pick (every 5th level)
+- `"levelup"` → attribute stat pick
+- `"win"` → post-battle victory options
+- `"shop"` → merchant screen
+- `"rest"` → campfire rest screen
+- `"lose"` → death screen
+- `"gamewon"` → victory / stats screen
 
 ## Design Direction
 
@@ -64,7 +194,7 @@ Keep the game playable directly from the HTML file unless a requested feature tr
 Good additions include:
 
 - More enemies with distinct mechanics (use existing flags pattern: `poisonOnHit`, `burnsOnHit`, `bleedsOnCrit`, `stunsOnHit`, `enragesWhenLow`, `fleesWhenLow`, `immuneToCrit`).
-- More equipment and item synergies (follow `EQUIPMENT_DEFS` shape; special-case behavior via flags like `vampiric` handled in `handleAction`).
+- More equipment and item synergies (follow `EQUIPMENT_DEFS` shape; `procs` object for weapon on-hit chances; special flags like `vampiric` handled explicitly in `handleAction`).
 - Better balance across waves, bosses, and item costs.
 - Clearer status effect feedback (icons in the header, on the player tag, in the stat panel, and via `*Pulse` keyframes on the player sprite).
 - More satisfying boss encounters.
@@ -74,21 +204,30 @@ Good additions include:
 
 ## Combat Flow — Read Before Editing
 
-1. `handleAction("attack")` → calls `playerAttack(ep, enemy)` → applies vampiric heal → updates enemy HP → if alive, calls `runEnemyTurn(effectivePlayer, next)`.
+1. `handleAction("attack")` → calls `playerAttack(ep, enemy)` → applies vampiric heal (if weapon has `vampiric` and a crit landed) → updates enemy HP → if enemy has procs (poison/burn/bleed), applies them → if enemy `enragesWhenLow` and crosses threshold, sets `enraged` flag → if alive, calls `runEnemyTurn(effectivePlayer, next)`.
 2. `runEnemyTurn(p, e)` schedules a `setTimeout` (750ms). Inside the callback, in order:
-   - Poison tick (1 dmg, decrement)
-   - Burn tick (2 dmg, decrement)
-   - Bleed decrement (effect already amplifies incoming damage below)
-   - Archer flee check (`fleesWhenLow`)
+   - Enemy poison tick (1 dmg, decrement) — may resolve victory
+   - Enemy burn tick (2 dmg, decrement) — may resolve victory
+   - Enemy bleed decrement (only decrements; damage bonus applied on player swings against a bleeding enemy)
+   - **Player** poison tick (1 dmg, decrement) — may cause lose
+   - **Player** burn tick (2 dmg, decrement) — may cause lose
+   - **Player** bleed decrement
+   - Archer flee check (`fleesWhenLow`, 35% pct at ≤30% HP) — resolves with half reward
    - `enemyAttack(curP, e)` → returns `{dmgToPlayer, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun}`
-   - Bleed amplifies dmg (×1.5) before applying
-   - Apply status effects (`setPoison/setBurn/setBleed/setStun`)
+   - Bleed amplifies `dmgToPlayer` (×1.5 if `bleed > 0`, devMode zeroes it)
+   - Apply status effects to player (`setPoison/setBurn/setBleed/setStun`)
    - Counter damage to enemy (may resolve victory)
-   - Damage to player; iron will check; lose check; phase back to "player" (or recursive `runEnemyTurn` if stunned)
-3. `resolveVictory(defeatedEnemy)` → gold (+greed multiplier) → XP → maybe level up → if boss, advance wave + open shop → either `triggerLevelUp` or `setPhase("win")`.
+   - Damage to player; iron will check; lose check; phase back to `"player"` (or recursive `runEnemyTurn` after 1.1s if stunned)
+3. `resolveVictory(defeatedEnemy)` → gold (+greed multiplier if Ring of Greed equipped) → XP → maybe level up (roll d8 hitDice, half-HP heal) → if boss, advance wave + open shop → either `triggerLevelUp` or `setPhase("win")`.
 
 Be careful with React state updates during combat turns. Status-effect counters (`poison`, `burn`, `bleed`) are read from closure inside `runEnemyTurn` — that's intentional and represents the "value at turn start". Do not break this pattern unless reworking the timeout chain.
 
 ## Testing Note
 
-Toggle the **DEV** button before manual testing. Dev mode disables incoming damage and reveals all room types, so you can reliably reach the end. Disable dev mode when testing difficulty or balance changes.
+Toggle the **DEV** button before manual testing. Dev mode:
+- Disables all incoming damage (`dmgToPlayer = 0`)
+- Forces `verbose=true` in combat (dice detail shown in logs)
+- Reveals all room types and enemy identities on the map
+- Boosts `roomPlayer` awareness/identify to near-max so room descs and shop stats show
+
+Disable dev mode when testing difficulty or balance changes.
