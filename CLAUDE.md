@@ -32,11 +32,13 @@ Keep the game playable directly from the HTML file unless a requested feature tr
 ### Level-up & Perks
 - On each level-up, pick 1 attribute from `STAT_POOL`. Half-max-HP heal on level up. XP needed = `level * 3`.
 - Every 5th level (levels 5, 10, 15, 20), a **Milestone Perk** screen appears first (`phase = "perk"`). Pick from `PERK_POOL` — each perk is one-shot and removed from future offers after being picked.
-- **PERK_POOL** perks:
+- **PERK_POOL** perks (each has an optional `requires: [perkId, ...]` field — see Planned Features #8):
   - `doubleStrikeChance` → ★ Double Strike: 25% chance to attack twice
   - `ironWill` → ★ Iron Will: survive a killing blow with 1 HP once per battle
   - `armorPierce` → ★ Armor Pierce: crits ignore all enemy armor
   - `dualWield` → ★ Dual Wield: equip two light weapons, both strike independently each attack
+  - `tripleStrikeChance` → ★ Triple Strike: when double strike fires, 25% chance for a third swing *(requires Double Strike + Dual Wield)*
+  - `masterDualist` → ★ Master Dualist: each weapon in a dual-wield combo rolls its own crit check independently *(requires Dual Wield)*
 
 ### Weapon System
 - Weapons have a `hand` field controlling slot rules:
@@ -326,6 +328,152 @@ These are confirmed design directions for the game. When implementing any of the
 - The shop should offer a **Sell** option for inventory equipment: sell price = 50% of base `item.cost` (before any discount), rounded down, minimum 1 gold.
 - Selling is only available at the shop, not from the inventory mid-battle.
 - The combat log should note "⚔ OLD WEAPON STORED IN BAG" when a weapon is displaced.
+
+---
+
+### 8. Perk Prerequisite System & Stackable Strike Perks
+
+**Goal**: Some perks should only appear once the player has taken the required earlier perk. Double Strike and Triple Strike can be picked multiple times, stacking their chances.
+
+**How prerequisites should work**:
+- Add an optional `requires: [perkId, ...]` array to each `PERK_POOL` entry.
+- In `triggerLevelUp`, the filter becomes:
+  ```js
+  const remaining = PERK_POOL.filter(p => {
+    if (p.requires && !p.requires.every(id => currentPlayer[id])) return false; // prereqs not met
+    if (!p.stackable && currentPlayer[p.id]) return false;                       // already taken, non-stackable
+    return true;
+  });
+  ```
+- Gate table:
+
+  | Perk | Requires | Stackable |
+  |---|---|---|
+  | ★ Double Strike | *(none)* | ✓ |
+  | ★ Iron Will | *(none)* | — |
+  | ★ Armor Pierce | *(none)* | — |
+  | ★ Dual Wield | *(none)* | — |
+  | ★ Triple Strike | Double Strike + Dual Wield | ✓ |
+  | ★ Master Dualist | Dual Wield | — |
+
+**How stackable strike perks work**:
+- `doubleStrikeChance` and `tripleStrikeChance` are additive. Picking Double Strike twice raises the chance from 25% → 50%. Picking it four times reaches 100% (guaranteed).
+- The perk `apply` function uses `+` rather than `=`:
+  ```js
+  apply: p => ({ ...p, doubleStrikeChance: (p.doubleStrikeChance||0) + 25 })
+  ```
+- The perk label shown in the pick UI should display the current stacked value so the player can see their progress (e.g. "★ DOUBLE STRIKE (25% → 50%)").
+- Triple Strike stacks the same way: each pick adds 25% to `tripleStrikeChance`.
+- Stackable perks stay in the perk offer pool until capped (100%) or no milestone levels remain.
+
+---
+
+### 9. Master Dualist Perk
+
+**Goal**: A pinnacle dual-wield perk that makes each weapon in a dual-wield combo roll its own independent crit check, rather than sharing the result of a single roll.
+
+**Requires**: Dual Wield perk.
+
+**How it should work**:
+- Currently `playerAttack` resolves one `d20Hit` + `wouldCrit` check and then iterates over weapons, applying the same crit outcome to every swing.
+- With Master Dualist active, each call to `doSwing` rolls its own `d20Hit` independently — the main hand and offhand each have their own chance to crit.
+- This makes the offhand meaningful even on turns where the main hand misses or hits normally.
+- Store as `player.masterDualist: true`; check it inside `doSwing` to decide whether to use the shared outer roll or re-roll per weapon.
+
+---
+
+### 10. Boss Phases
+
+**Goal**: Bosses transform at 50% HP, gaining new abilities or stat changes. Makes boss fights climactic rather than a pure stat race.
+
+**How it should work**:
+- Each boss definition in `BOSS_DEFS` (and optionally `WAVE_BOSSES`) can have a `phase2` object: `{ attack, hitChance, flags, label }`.
+- In `handleAction` (after applying damage), when enemy HP crosses 50% for the first time and `enemy.phase2` exists and `!enemy.phased`, apply the phase2 stats:
+  ```js
+  if (next.hp <= Math.ceil(next.maxHp/2) && next.phase2 && !next.phased) {
+    next = { ...next, ...next.phase2, phased: true };
+    addLog(`★ ${next.name} TRANSFORMS! ★`, "crit");
+  }
+  ```
+- The arena enemy sprite can flash or use `getCrit` animation on the transition.
+- Phase 2 examples: Gleeok grows a second head (+2 ATK, starts burning on hit). Ganon enters dark form (+immuneToCrit if not already, poison refreshes to 4 turns).
+- The combat UI should show a "PHASE 2" tag under the boss name once phased.
+
+---
+
+### 11. Bestiary
+
+**Goal**: Killing enemies repeatedly unlocks their full stat sheet permanently, removing the WIS check for that enemy type in future encounters.
+
+**How it should work**:
+- `gameStats.killCounts` already tracks kills per enemy name. Use it.
+- Add a `knownEnemies` state (`Set` or object keyed by enemy name) that persists across the run. Once an enemy is known, its identity and stats are always revealed on the map regardless of WIS.
+- Threshold: after **3 kills** of the same enemy type, it is added to `knownEnemies` and a log line fires: "📖 ENEMY LEARNED: BOKOBLIN".
+- `makeRoomChoices` and the idle map UI check `knownEnemies` in addition to `awareness`/`revealAll`.
+- On the game-won screen, display the number of unique enemy types learned.
+- Future extension: a dedicated "Bestiary" screen accessible from the idle map.
+
+---
+
+### 12. Trap Rooms
+
+**Goal**: A new room type with no enemy — a dungeon trap that costs resources to pass but rewards the bold.
+
+**How it should work**:
+- Add `{ id:"trap", icon:"⚠", label:"TRAP ROOM", desc:"DANGER · RICHES WITHIN" }` to `ROOM_TYPES`.
+- Entering a trap room does **not** start a battle. Instead a prompt appears:
+  - **Force through** — take flat damage (e.g. 3–5 HP, ignoring armor) and receive a free consumable item.
+  - **Disarm (INT check)** — roll against `identify` chance. Success: full reward + no damage. Failure: same as forcing through, but +1 damage.
+  - **Leave** — exit without penalty, room remains uncleared.
+- Gold reward (bonus, not enemy gold) is higher than a standard room to make the risk worthwhile.
+- Trap rooms cannot hold a boss and cannot be the wave's boss slot.
+- Cleared trap rooms are marked the same as cleared combat rooms (dimmed + ✓).
+
+---
+
+### 13. Equipment Set Bonuses
+
+**Goal**: Wearing two or more pieces from the same thematic set activates a passive bonus, encouraging cohesive builds.
+
+**How it should work**:
+- Define sets in a `EQUIPMENT_SETS` constant. Each set has a `pieces: [itemId, ...]` list and a `bonus` stats object applied when ≥ 2 (or all) pieces are equipped:
+  ```js
+  const EQUIPMENT_SETS = [
+    { id:"iron",   label:"IRON SET",   pieces:["helmet","torso","leg"], bonus2:{ armor:1 },       bonus3:{ armor:2, hitChance:5 } },
+    { id:"shadow", label:"SHADOW SET", pieces:["mask","eq_cloak","feet"], bonus2:{ dodgeChance:5 }, bonus3:{ dodgeChance:10, critChance:5 } },
+  ];
+  ```
+- `applyEquipment` loops over `EQUIPMENT_SETS` after summing item stats, counts how many pieces from each set are equipped, and adds the appropriate bonus tier.
+- The gear panel should show active set bonuses (green text listing the bonus and how many more pieces complete the next tier).
+
+---
+
+### 14. Challenge / Arena Rooms
+
+**Goal**: A visually distinct harder room that guarantees a rare reward, giving players a meaningful high-risk choice on the map.
+
+**How it should work**:
+- Add `{ id:"arena", icon:"⚡", label:"ARENA", desc:"ELITE FOE · RARE REWARD GUARANTEED" }` to `ROOM_TYPES`.
+- The enemy spawned is the same `pickEnemy(level)` but with `+4 maxHp`, `+2 ATK`, `+10% hitChance`, and a visual "ELITE" prefix on its name.
+- On victory, `resolveVictory` detects the arena room flag and forces a rare equipment item into the loot (not just gold + XP) — pull one item from the rare pool in `EQUIPMENT_DEFS` that the player doesn't already own.
+- Arena rooms are less common than other types (lower weight in `makeRoomChoices`).
+- Arena rooms cannot appear in the boss slot.
+
+---
+
+### 15. Floor Transition Events
+
+**Goal**: When descending via stairs, a short random event fires before the new floor generates. Adds narrative texture and occasional boons or setbacks.
+
+**How it should work**:
+- Define a `FLOOR_EVENTS` array. Each event has a `label`, `desc`, and an `apply(player, setPlayer, addLog)` callback.
+- After the "DESCEND?" confirmation and before generating the new floor rooms, roll one event.
+- Example events:
+  - **Cursed Shrine** — gain +2 to a random attribute, but a random status effect (burn or bleed) is applied for 2 turns on the first enemy of the new floor.
+  - **Wounded Adventurer** — find a dying hero; they give you one random consumable from `SHOP_CONSUMABLES`.
+  - **Merchants Ambush** — a shady merchant appears; buy one item at full price, skip, or pay 2 gold to send them away. Skipping with no payment applies a 5% shop penalty on the next floor.
+  - **Empty Passage** — nothing happens (most common; keeps events feel rare).
+- The event fires in a new `"floorevent"` phase before transitioning back to `"idle"` with the new floor loaded.
 
 ---
 
