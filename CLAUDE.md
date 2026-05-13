@@ -6,7 +6,9 @@ The game should feel fast, readable, charming, and arcade-like. Preserve the 8-b
 
 ## Core Experience
 
-The player explores a persistent dungeon map (small / big / bridge / stairs / shrine rooms), fights enemies in rooms, earns XP and gold, levels up, picks an attribute upgrade or milestone perk, and eventually chooses when to challenge the boss room to advance to the next floor. The dungeon clears at level 21.
+The player is presented with up to 3 room choices (small / big / bridge / stairs / shrine, drawn randomly each fight) from a dungeon map, fights the enemy in the chosen room, earns XP and gold, levels up, picks an attribute upgrade or milestone perk, and eventually fights the boss room at position 5 of each wave to advance. The dungeon clears at level 21.
+
+Room choices are regenerated after every fight — the map is not yet persistent. Rooms that were not chosen disappear. The planned direction is a persistent floor map where all rooms stay visible and can be revisited (see Planned Features).
 
 Each combat is a turn-based duel: player swings (d20-to-hit, dice damage, optional double/triple strike, optional crit, optional weapon procs), then enemy swings (d20-to-hit, d3 base damage, optional poison/burn/bleed/stun proc, optional counter from the player). Status effects tick at the start of each enemy turn.
 
@@ -83,7 +85,7 @@ Full list in `ENEMY_DEFS` (name → niche):
 Enemy flags also available: `poisonOnHit`, `immuneToCrit`.
 
 ### Wave Structure
-- 5 rooms per wave (WAVE_LENGTH = 5), room 5 is always a boss.
+- 5 rooms per wave (WAVE_LENGTH = 5). When `wavePos >= WAVE_LENGTH-1`, `makeRoomChoices` returns only the boss room as the sole choice — the player must click it to start the fight. There is no confirmation prompt yet (planned).
 - Defeating a boss: advance wave, `wavePos` resets to 0, shop unlocks.
 - Wave enemy pools (weighted) defined in `WAVES[0..4]`; enemies beyond wave 5 keep using wave 5 pool with scaling.
 - **WAVE_BOSSES** (waves 1–4): King Bokoblin, Mummy Lord, Arch Wizzrobe, Iron Darknut.
@@ -229,9 +231,11 @@ Be careful with React state updates during combat turns. Status-effect counters 
 
 These are confirmed design directions for the game. When implementing any of them, read this section first and implement against the intent described here rather than the current placeholder behaviour.
 
+**Status key**: `[ ]` not started · `[~]` partially done · `[x]` complete
+
 ---
 
-### 1. Persistent Dungeon Map with Visible Room Sizes
+### `[ ]` 1. Persistent Dungeon Map with Visible Room Sizes
 
 **Goal**: The map should show all rooms on the current floor laid out visually, with size clearly communicated. Choosing the small room should not consume the big room — both remain available.
 
@@ -250,7 +254,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 2. Stairs → New Dungeon Floor
+### `[ ]` 2. Stairs → New Dungeon Floor
 
 **Goal**: Entering a stairs room transitions to a deeper floor rather than just granting +1 XP.
 
@@ -264,20 +268,20 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 3. Boss Room: Optional Entry, Not Forced
+### `[~]` 3. Boss Room: Optional Entry, Not Forced
 
 **Goal**: The boss room is visible on the map but the player decides when to fight it. It should not trigger automatically.
 
-**How it should work**:
-- The boss room always appears on the floor map (last position or marked with ▰ BOSS).
-- The player can clear other rooms first to level up and heal, then choose to enter the boss room when ready.
-- Entering the boss room shows a confirmation prompt: "THE GUARDIAN WAITS. ENTER?" before starting combat.
-- The boss room cannot be skipped to reach the next floor — descending via stairs or advancing requires either defeating the boss or finding another path forward (TBD).
-- `wavePos` should not auto-increment just from entering the boss room; the boss fight itself must complete.
+**Current state**: When `wavePos >= WAVE_LENGTH-1`, `makeRoomChoices` already returns only the boss room as the single map choice — the player clicks it to start the fight. `wavePos` only advances after `startBattle` is called. The player can clear non-boss rooms freely before reaching position 5.
+
+**What's missing**:
+- No confirmation prompt ("THE GUARDIAN WAITS. ENTER?") before the fight begins.
+- Once the boss room is the only choice, the player cannot opt to rest/camp before clicking it without fleeing mid-fight.
+- With the persistent map (Feature #1), the boss should remain visible but enterable at any time rather than gating behind wavePos.
 
 ---
 
-### 4. Big Rooms: Multi-Enemy Encounters
+### `[ ]` 4. Big Rooms: Multi-Enemy Encounters
 
 **Goal**: Big rooms have a chance (~40%) to contain two enemies that fight simultaneously.
 
@@ -297,7 +301,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 5. Speed Stat & Turn Order
+### `[ ]` 5. Speed Stat & Turn Order
 
 **Goal**: Add a `speed` stat derived from DEX that determines who acts first in combat. Currently the player always attacks first.
 
@@ -317,7 +321,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 6. Old Weapon Moves to Inventory on Replace
+### `[ ]` 6. Old Weapon Moves to Inventory on Replace
 
 **Goal**: Buying a new weapon from the shop should send the previously equipped weapon to the player's bag, not discard it silently.
 
@@ -331,7 +335,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 8. Perk Prerequisite System & Stackable Strike Perks
+### `[ ]` 8. Perk Prerequisite System & Stackable Strike Perks
 
 **Goal**: Some perks should only appear once the player has taken the required earlier perk. Double Strike and Triple Strike can be picked multiple times, stacking their chances.
 
@@ -368,7 +372,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 9. Master Dualist Perk
+### `[ ]` 9. Master Dualist Perk
 
 **Goal**: A pinnacle dual-wield perk that makes each weapon in a dual-wield combo roll its own independent crit check, rather than sharing the result of a single roll.
 
@@ -382,7 +386,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 10. Boss Phases
+### `[ ]` 10. Boss Phases
 
 **Goal**: Bosses transform at 50% HP, gaining new abilities or stat changes. Makes boss fights climactic rather than a pure stat race.
 
@@ -401,7 +405,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 11. Bestiary
+### `[ ]` 11. Bestiary
 
 **Goal**: Killing enemies repeatedly unlocks their full stat sheet permanently, removing the WIS check for that enemy type in future encounters.
 
@@ -415,7 +419,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 12. Trap Rooms
+### `[ ]` 12. Trap Rooms
 
 **Goal**: A new room type with no enemy — a dungeon trap that costs resources to pass but rewards the bold.
 
@@ -431,7 +435,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 13. Equipment Set Bonuses
+### `[ ]` 13. Equipment Set Bonuses
 
 **Goal**: Wearing two or more pieces from the same thematic set activates a passive bonus, encouraging cohesive builds.
 
@@ -448,7 +452,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 14. Challenge / Arena Rooms
+### `[ ]` 14. Challenge / Arena Rooms
 
 **Goal**: A visually distinct harder room that guarantees a rare reward, giving players a meaningful high-risk choice on the map.
 
@@ -461,7 +465,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 15. Floor Transition Events
+### `[ ]` 15. Floor Transition Events
 
 **Goal**: When descending via stairs, a short random event fires before the new floor generates. Adds narrative texture and occasional boons or setbacks.
 
@@ -477,7 +481,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### 7. Double Strike Early Exit (Bug Fix Goal)
+### `[ ]` 7. Double Strike Early Exit (Bug Fix)
 
 **Goal**: If the first attack swing kills the enemy, skip the double/triple strike roll entirely. Currently the game can roll extra swings against a 0-HP enemy.
 
