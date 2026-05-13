@@ -6,7 +6,7 @@ The game should feel fast, readable, charming, and arcade-like. Preserve the 8-b
 
 ## Core Experience
 
-The player chooses a room (small / big / bridge / stairs / shrine) from a dungeon map, fights a single enemy in that room, earns XP and gold, levels up, picks an attribute upgrade or milestone perk, eventually faces a boss at the end of the wave, and unlocks the shop. The dungeon clears at level 21.
+The player explores a persistent dungeon map (small / big / bridge / stairs / shrine rooms), fights enemies in rooms, earns XP and gold, levels up, picks an attribute upgrade or milestone perk, and eventually chooses when to challenge the boss room to advance to the next floor. The dungeon clears at level 21.
 
 Each combat is a turn-based duel: player swings (d20-to-hit, dice damage, optional double/triple strike, optional crit, optional weapon procs), then enemy swings (d20-to-hit, d3 base damage, optional poison/burn/bleed/stun proc, optional counter from the player). Status effects tick at the start of each enemy turn.
 
@@ -16,9 +16,9 @@ Keep the game playable directly from the HTML file unless a requested feature tr
 
 ### Attributes (D&D-style, default 10, mod = floor((score-10)/2))
 - `strength` → +ATK and +5% HIT per mod
-- `dexterity` → +5% DODGE and +5% CRIT per mod
+- `dexterity` → +5% DODGE, +5% CRIT, and +SPD per mod (speed determines turn order — see Planned Features)
 - `constitution` → +2 MAX HP and +5% poison resist per +2 score (applied retroactively via `hitDice` history)
-- `wisdom` → +15% room awareness per mod (reveals room types on the dungeon map)
+- `wisdom` → +15% room awareness per mod (reveals room types and enemies on the map; high WIS prevents surprise — see Planned Features)
 - `charisma` → -5% shop prices per mod
 - `intelligence` → +15% identify per mod (shows full equipment stats in shop)
 
@@ -94,9 +94,10 @@ Enemy flags also available: `poisonOnHit`, `immuneToCrit`.
 
 ### Room Types
 `ROOM_TYPES` (small, big, bridge, stairs, shrine) each provide an optional `enemyMod(e)` function applied via `applyRoomToEnemy`:
-- **Big Room**: enemy +2 HP, +1–3 gold
+- **Small Room**: standard tight fight, no modifier
+- **Big Room**: enemy +2 HP, +1–3 gold; has a chance to hold multiple enemies simultaneously (see Planned Features)
 - **Bridge**: enemy +15% dodge, +2 gold max
-- **Stairs**: enemy +1 XP
+- **Stairs**: leads to a new dungeon floor (see Planned Features) — currently grants enemy +1 XP
 - **Shrine**: enemy −10% hit (min 30), −1 gold min
 
 Room and enemy identity on the map are hidden unless the player's `awareness` (from WIS) or `devMode` reveals them.
@@ -221,6 +222,128 @@ Good additions include:
 3. `resolveVictory(defeatedEnemy)` → gold (+greed multiplier if Ring of Greed equipped) → XP → maybe level up (roll d8 hitDice, half-HP heal) → if boss, advance wave + open shop → either `triggerLevelUp` or `setPhase("win")`.
 
 Be careful with React state updates during combat turns. Status-effect counters (`poison`, `burn`, `bleed`) are read from closure inside `runEnemyTurn` — that's intentional and represents the "value at turn start". Do not break this pattern unless reworking the timeout chain.
+
+## Planned Features & Design Goals
+
+These are confirmed design directions for the game. When implementing any of them, read this section first and implement against the intent described here rather than the current placeholder behaviour.
+
+---
+
+### 1. Persistent Dungeon Map with Visible Room Sizes
+
+**Goal**: The map should show all rooms on the current floor laid out visually, with size clearly communicated. Choosing the small room should not consume the big room — both remain available.
+
+**How it should work**:
+- Rooms are generated once per floor and stored in state. They do not regenerate when the player returns to the map.
+- Each room on the map displays its size/type icon prominently (▦ small, ▣ big, ═ bridge, ⇣ stairs, ✚ shrine, ▰ boss).
+- Rooms have two states: `cleared` (enemy defeated, re-entry is safe/empty) and `uncleared` (enemy still present).
+- The player can freely enter any uncleared room, defeat the enemy, then return to the map and enter a different uncleared room. No room is locked out by entering another.
+- Cleared rooms are visually distinct (dimmed, ✓ marker) but still enterable — re-entering just shows an empty room with no combat.
+- The map should render all rooms for the floor simultaneously, not only the 3 current choices. The `DungeonMap` component needs to show a spatial layout rather than a simple linear progress bar.
+
+**Data shape to add per room** (extend current room object):
+```js
+{ id, type, icon, label, desc, enemy, enemyMod, cleared: false, known, enemyKnown }
+```
+
+---
+
+### 2. Stairs → New Dungeon Floor
+
+**Goal**: Entering a stairs room transitions to a deeper floor rather than just granting +1 XP.
+
+**How it should work**:
+- When the player enters a stairs room and clears the enemy (or the room is already cleared), a "DESCEND?" prompt appears.
+- Descending generates a fresh set of rooms for the new floor (new enemies, new layout). Floor number increments.
+- Enemies on deeper floors use the next wave tier / higher scaling — stairs are the primary difficulty ramp mechanism beyond boss waves.
+- The shop does **not** auto-unlock on a floor transition; only boss kills unlock the shop.
+- Floor number is displayed in the HUD alongside wave number.
+- Stairs should be less common than other room types to prevent trivial skipping of boss rooms.
+
+---
+
+### 3. Boss Room: Optional Entry, Not Forced
+
+**Goal**: The boss room is visible on the map but the player decides when to fight it. It should not trigger automatically.
+
+**How it should work**:
+- The boss room always appears on the floor map (last position or marked with ▰ BOSS).
+- The player can clear other rooms first to level up and heal, then choose to enter the boss room when ready.
+- Entering the boss room shows a confirmation prompt: "THE GUARDIAN WAITS. ENTER?" before starting combat.
+- The boss room cannot be skipped to reach the next floor — descending via stairs or advancing requires either defeating the boss or finding another path forward (TBD).
+- `wavePos` should not auto-increment just from entering the boss room; the boss fight itself must complete.
+
+---
+
+### 4. Big Rooms: Multi-Enemy Encounters
+
+**Goal**: Big rooms have a chance (~40%) to contain two enemies that fight simultaneously.
+
+**How it should work**:
+- When a big room spawns with `multiEnemy: true`, two separate enemy objects are generated via `pickEnemy`.
+- Both enemies are tracked in state (e.g. `enemies: [enemyA, enemyB]` instead of a single `enemy`).
+- **Player turn**: the attack action UI shows target buttons — the player picks which enemy to hit. Alternatively, attacks hit a random living enemy (simpler first pass).
+- **Enemy turn**: each living enemy takes an independent turn, rolling attack separately. Both attack the player in sequence within the same 750ms window.
+- Status effects (poison, burn, bleed) are tracked per-enemy.
+- Killing one enemy does not end the fight — the surviving enemy continues.
+- XP and gold are awarded per enemy on death, with a multi-enemy bonus (e.g. +1 gold for each enemy beyond the first).
+- Reward on full clear: standard resolveVictory called once all enemies are dead.
+- **Combat log** prefixes each enemy action with its name to distinguish attackers.
+- The arena should display both enemy sprites side by side when multiple enemies are alive.
+
+**Implementation note**: This is the most complex planned feature. The current single `enemy` state and `runEnemyTurn(p, e)` chain must be extended to support an `enemies[]` array. Keep the single-enemy path working; only big rooms with the flag trigger the multi-enemy path.
+
+---
+
+### 5. Speed Stat & Turn Order
+
+**Goal**: Add a `speed` stat derived from DEX that determines who acts first in combat. Currently the player always attacks first.
+
+**How it should work**:
+- `speed` is computed in `applyAbilityStats`: base 10 + DEX mod × 2 (tentative formula).
+- At `startBattle`, compare `ep.speed` vs `enemy.speed`. If the enemy is faster, the first turn is an enemy turn (`runEnemyTurn` fires immediately before the player gets input).
+- Display turn order in the combat HUD: "YOU GO FIRST" vs "ENEMY STRIKES FIRST!".
+- Enemies have a `speed` field in `ENEMY_DEFS` (default 10; fast enemies like PEAHAT, LIZALFOS should be higher).
+- Speed ties go to the player.
+- Add `speed` to `STAT_LABEL` as `SPD`.
+
+**Surprise condition**:
+- If the player's WIS was **not** high enough to reveal the enemy's identity (`enemyKnown === false` on the room choice), the enemy gains a surprise speed bonus (+5 to +10 SPD) at the start of that specific battle.
+- This represents being caught off-guard. The combat log shows "⚡ SURPRISE! ENEMY STRIKES FIRST!" when this triggers.
+- WIS investment is therefore doubly rewarded: reveals enemies on the map AND prevents getting surprised.
+- The surprise bonus only applies to the first round; subsequent turns use base speeds.
+
+---
+
+### 6. Old Weapon Moves to Inventory on Replace
+
+**Goal**: Buying a new weapon from the shop should send the previously equipped weapon to the player's bag, not discard it silently.
+
+**How it should work**:
+- In `buyItem`, when `item.slot === 'weapon'` (or `'offhand'`) and `equipment[item.slot]` is already set, move the current weapon into `inventory` before equipping the new one.
+- This applies to shields/offhand items too.
+- Inventory items are usable from the bag (for consumables) or can be re-equipped via the gear panel (for equipment — future feature: gear panel swap).
+- The shop should offer a **Sell** option for inventory equipment: sell price = 50% of base `item.cost` (before any discount), rounded down, minimum 1 gold.
+- Selling is only available at the shop, not from the inventory mid-battle.
+- The combat log should note "⚔ OLD WEAPON STORED IN BAG" when a weapon is displaced.
+
+---
+
+### 7. Double Strike Early Exit (Bug Fix Goal)
+
+**Goal**: If the first attack swing kills the enemy, skip the double/triple strike roll entirely. Currently the game can roll extra swings against a 0-HP enemy.
+
+**How it should work**:
+- In `playerAttack`, after accumulating `total` from the primary swing(s), check if `total >= e.hp` before the double-strike roll.
+- If the enemy would already be dead, return early without the extra swings.
+- This is a small code fix in the double-strike block inside `playerAttack`:
+  ```js
+  // Only roll double strike if enemy would survive the primary swing
+  if (total < e.hp && (dbl >= 100 || (dbl > 0 && pct(dbl)))) { ... }
+  ```
+- Triple strike follows the same rule — check after the double swing if the enemy is still alive.
+
+---
 
 ## Testing Note
 
