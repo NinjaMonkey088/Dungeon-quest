@@ -84,6 +84,14 @@ Full list in `ENEMY_DEFS` (name → niche):
 
 Enemy flags also available: `poisonOnHit`, `immuneToCrit`.
 
+Certain enemies also have a **tactical move** (`tacticId`) that they use once per combat under a trigger condition (`tacticTrigger`). See Planned Feature #17 for the full system. Intended assignments:
+- `DARKNUT` — `BRACE`: when HP drops below 75%, gains +2 armor for the rest of the fight
+- `WIZZROBE` — `CHANNEL`: on first turn, skips attack; next turn deals bonus spell damage
+- `GIBDO` — `FORTIFY`: once per combat, spends a turn to gain +2 armor
+- `STALFOS` — `SHARPEN`: on first turn, skips attack; gains +15% crit for the rest of combat
+- `BERSERKER` — already has `enragesWhenLow`; additionally `FRENZY`: doubles attack but halves armor when enraged
+- `ARCHER` — `MARK`: once per combat, spends a turn to apply −15% dodge to player for 3 turns
+
 ### Wave Structure
 - 5 rooms per wave (WAVE_LENGTH = 5). When `wavePos >= WAVE_LENGTH-1`, `makeRoomChoices` returns only the boss room as the sole choice — the player must click it to start the fight. There is no confirmation prompt yet (planned).
 - Defeating a boss: advance wave, `wavePos` resets to 0, shop unlocks.
@@ -278,6 +286,8 @@ These are confirmed design directions for the game. When implementing any of the
 ### `[ ]` 2. Stairs → New Dungeon Floor
 
 **Goal**: Entering a stairs room transitions to a deeper floor rather than just granting +1 XP.
+
+**Stairs are gated behind the boss**: the stairs room exists on the floor map but is **locked** (greyed out, marked 🔒) until the floor's boss is defeated. Defeating the boss unlocks the stairs and shows a brief log line: "⇣ THE WAY DOWN IS OPEN." This prevents skipping difficulty by descending before the boss fight.
 
 **How it should work**:
 - When the player enters a stairs room and clears the enemy (or the room is already cleared), a "DESCEND?" prompt appears.
@@ -515,6 +525,86 @@ These are confirmed design directions for the game. When implementing any of the
   if (total < e.hp && (dbl >= 100 || (dbl > 0 && pct(dbl)))) { ... }
   ```
 - Triple strike follows the same rule — check after the double swing if the enemy is still alive.
+
+---
+
+### `[ ]` 16. Player Class System
+
+**Goal**: The player picks a class at the start of a run. Each class has a unique set of named combat actions that unlock gradually over level-ups, replacing "ATTACK" on some turns with a class-flavoured tactical choice. This replaces the idea of a single global buff/debuff action menu — instead, the player's class entirely defines which tactical options they see.
+
+**Class selection**: A class picker screen appears when the player clicks START, before entering the dungeon. Class is permanent for the run. Classes do not restrict equipment by default, but balance should be tuned around their natural niche.
+
+**Ability unlock pacing**: Class abilities unlock at specific level thresholds (e.g. levels 3, 7, 12). The first ability is simple; later ones are more powerful and situational. When a new ability unlocks, a brief log line fires: "★ NEW ABILITY: [NAME]!"
+
+**Action cost and duration**: Using a class action costs your attack turn (the enemy attacks after). All stat bonuses from class actions last **for the rest of combat** unless noted otherwise.
+
+---
+
+**⚔ FIGHTER**
+- Niche: reliable damage with a trade-off between power and utility.
+- **STRONG STRIKE** *(unlocks level 3)*: Full normal attack, no special effect. This is the "default" attack clearly labelled as a named option.
+- **WEAK STRIKE** *(unlocks level 3)*: Deals half damage, but grants +1 STR for the rest of combat. Can be used to stack STR across multiple turns.
+- **RALLY** *(unlocks level 7)*: No attack. Heals 2 HP and removes one stack of any status effect.
+- **CLEAVE** *(unlocks level 12)*: Full attack; if it kills the enemy, immediately gains one free bonus attack (even in multi-enemy fights, targets the next living enemy).
+
+---
+
+**🪓 BARBARIAN**
+- Niche: explosive HP and strength at the cost of vulnerability.
+- **BERSERK CHARGE** *(unlocks level 3)*: No attack this turn. Gain TempHP equal to current maxHp (doubles effective HP pool), AND +5 STR for the rest of combat. Trade-off: while TempHP is active the barbarian takes **double damage from status effects** (poison, burn, bleed tick twice per turn).
+- **RECKLESS SWING** *(unlocks level 7)*: Attack with +4 ATK and +20% crit, but the barbarian takes 3 unblockable recoil damage regardless of whether the attack hits.
+- **WAR CRY** *(unlocks level 12)*: No attack. Debuffs enemy: −3 ATK and −15% HIT for the rest of combat. Represents intimidation breaking the enemy's focus.
+
+---
+
+**🗡 ROGUE**
+- Niche: burst crit damage and evasion, fragile but slippery.
+- **SHADOW STEP** *(unlocks level 3)*: No attack this turn. Gain +30% CRIT and +30% DODGE for the rest of combat. One-time setup — cannot stack by reusing.
+- **BACKSTAB** *(unlocks level 7)*: Attack that always crits if the player dodged the last enemy attack. Otherwise resolves as a normal hit. Forces the player to have dodged to get full value.
+- **SMOKE SCREEN** *(unlocks level 12)*: No attack. Debuffs enemy: −25% HIT for the rest of combat and clears all player status effects once.
+
+---
+
+**🧙 MAGE**
+- Niche: escalating power and self-sustain at the cost of a slow start.
+- **ARCANE CHANNEL** *(unlocks level 3)*: No attack this turn. Steps the mage's `dieIdx` up by 1 (larger damage die), gains +10% DODGE, and heals 2 HP. Can be used multiple times but dieIdx caps at max progression.
+- **SPELL BURST** *(unlocks level 7)*: Attack using the current (possibly channelled) die. If the die was stepped up at least once this combat, the attack ignores enemy armor entirely.
+- **MYSTIC WARD** *(unlocks level 12)*: No attack. Gain +3 armor and immunity to the next status effect proc for the rest of combat.
+
+---
+
+**Implementation notes**:
+- Store chosen class in player state: `player.class = "fighter" | "barbarian" | "rogue" | "mage"`.
+- Store TempHP separately from regular HP: `player.tempHp`. TempHP absorbs damage before regular HP. Status effects deal double ticks against Barbarian while TempHP is active.
+- Class abilities unlocked by level go into a `player.unlockedAbilities: [abilityId, ...]` array, populated in `triggerLevelUp` based on `player.class` and `newLevel`.
+- The combat action panel (`phase === "player"`) checks `player.unlockedAbilities` and renders class action buttons alongside the standard ATTACK / USE ITEM / FLEE buttons.
+- Class ability effects (stat mutations) should use the same pattern as consumable `tempBuffs` where possible, so `getEffectivePlayer` picks them up automatically. TempHP and dieIdx changes require explicit state fields.
+- A `CLASS_DEFS` constant lists each class with its `id`, `label`, `emoji`, `desc`, and an `abilities` array of `{ id, label, desc, unlockLevel, action(player, enemy, setPlayer, addLog) }`.
+
+---
+
+### `[ ]` 17. Enemy Tactical Moves
+
+**Goal**: Certain enemy types spend turns on non-attack moves — buffing themselves or debuffing the player — making each encounter feel distinct rather than a pure stat race. This pairs with the Class System so the player can respond tactically.
+
+**How it should work**:
+- Each `ENEMY_DEFS` entry can have a `tacticId` string and a `tacticTrigger` condition.
+- In `runEnemyTurn`, before rolling `enemyAttack`, check if the enemy's tactic trigger is met and the tactic hasn't already fired (`!curE.tacticUsed` for once-per-combat moves). If triggered, apply the tactic effect and set `curE.tacticUsed = true`, log the action, skip the attack roll for this turn, and return to player phase.
+- Tactic log messages use "enemy" color type (red). Example: "DARKNUT BRACES FOR IMPACT! +2 ARMOR."
+
+**Tactic definitions** (to add to a `ENEMY_TACTICS` constant):
+```js
+const ENEMY_TACTICS = {
+  BRACE:    { label:"BRACES!", effect: e => ({...e, armor: e.armor+2}),        trigger: e => e.hp <= Math.ceil(e.maxHp*0.75) },
+  CHANNEL:  { label:"CHANNELS POWER!", effect: e => ({...e, dieBoost: true}),  trigger: (e, turn) => turn === 1 },
+  FORTIFY:  { label:"FORTIFIES!", effect: e => ({...e, armor: e.armor+2}),     trigger: (e, turn) => turn === 2 },
+  SHARPEN:  { label:"SHARPENS BLADE!", effect: e => ({...e, critChance:(e.critChance||0)+15}), trigger: (e, turn) => turn === 1 },
+  FRENZY:   { label:"ENTERS FRENZY!", effect: e => ({...e, attack: e.attack*2, armor: Math.floor(e.armor/2)}), trigger: e => e.enraged },
+  MARK:     { label:"MARKS YOU!", playerEffect: p => ({...p, dodgeDebuff: (p.dodgeDebuff||0)+15}), trigger: (e, turn) => turn === 1 },
+};
+```
+- `playerEffect` on a tactic applies to the player instead of the enemy (used for MARK).
+- `dieBoost` on WIZZROBE increases the die rolled on its next attack turn.
 
 ---
 
