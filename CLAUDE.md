@@ -237,19 +237,40 @@ These are confirmed design directions for the game. When implementing any of the
 
 ### `[ ]` 1. Persistent Dungeon Map with Visible Room Sizes
 
-**Goal**: The map should show all rooms on the current floor laid out visually, with size clearly communicated. Choosing the small room should not consume the big room — both remain available.
+**Goal**: Replace the current linear progress bar with a spatial dungeon map the player navigates by clicking rooms. Room size and type should be visually obvious from the map itself — a big room looks physically larger than a small room. Corridors connect rooms and communicate adjacency. The whole floor is visible at once; choosing one room never removes another.
+
+**Visual direction** (from reference maps):
+- Rooms are rectangles of different sizes rendered in CSS — small rooms are roughly 48×48px, big rooms are 80×64px or larger, corridors are narrow 8–12px-wide passages.
+- Rooms are arranged in a loose organic grid with corridors drawn as thin lines between them. The layout does not need to be a strict grid; rooms can be offset and connected diagonally.
+- Each room tile is clickable. The room type icon (▦ ▣ ═ ⇣ ✚ ▰ ⚠ ⚡) sits inside the tile; cleared rooms are dimmed with a ✓ overlay; the player's current position gets a highlight border or pulse animation.
+- Fog of war: rooms start as dark/grey outlines (shape visible but interior hidden). Entering an adjacent room reveals its type icon and, with enough WIS, its enemy. `devMode` reveals everything.
+- The boss room is always drawn at the "end" of the floor — visually further away, larger tile, red border glow.
+- Corridor lines between rooms are always visible even before the rooms are revealed — the player can see the map shape but not what's inside unvisited rooms.
 
 **How it should work**:
-- Rooms are generated once per floor and stored in state. They do not regenerate when the player returns to the map.
-- Each room on the map displays its size/type icon prominently (▦ small, ▣ big, ═ bridge, ⇣ stairs, ✚ shrine, ▰ boss).
-- Rooms have two states: `cleared` (enemy defeated, re-entry is safe/empty) and `uncleared` (enemy still present).
-- The player can freely enter any uncleared room, defeat the enemy, then return to the map and enter a different uncleared room. No room is locked out by entering another.
-- Cleared rooms are visually distinct (dimmed, ✓ marker) but still enterable — re-entering just shows an empty room with no combat.
-- The map should render all rooms for the floor simultaneously, not only the 3 current choices. The `DungeonMap` component needs to show a spatial layout rather than a simple linear progress bar.
+- Rooms are generated once per floor and stored in state as an array. They do not regenerate when the player returns to the map.
+- Each room object: `{ id, type, icon, label, desc, enemy, enemyMod, cleared: false, known: false, enemyKnown: false, x, y, w, h, connections: [id, ...] }` — `x/y/w/h` are layout coordinates used to position tiles, `connections` lists which other room ids it has corridors to.
+- A simple procedural layout algorithm places rooms on a virtual grid and connects them with corridors. It does not need to be complex — a branching tree (main path + side branches) is sufficient for the first pass.
+- Rooms have two states: `cleared` (enemy defeated, re-entry is safe/empty) and `uncleared` (enemy still present). Cleared rooms are visually distinct (dimmed, ✓ marker) but still enterable.
+- The player can freely click any room that is `known` (adjacent to a cleared or starting room). Clicking an uncleared room starts a fight; clicking a cleared room just shows a "ROOM CLEAR" message and returns to the map.
+- The `DungeonMap` component is rewritten from the current linear-progress implementation to a positioned-div layout using absolute positioning inside a fixed-size container, with SVG or CSS `border` lines for corridors.
 
-**Data shape to add per room** (extend current room object):
+**Data shape per room**:
 ```js
-{ id, type, icon, label, desc, enemy, enemyMod, cleared: false, known, enemyKnown }
+{
+  id: "room_0",
+  type: "small" | "big" | "bridge" | "stairs" | "shrine" | "trap" | "arena" | "boss",
+  icon: "▦",
+  label: "SMALL ROOM",
+  desc: "A TIGHT, CLEAN FIGHT",
+  enemy: { ...enemyObject },       // null if cleared or no enemy (trap rooms)
+  cleared: false,
+  known: false,                    // true = room type/icon visible
+  enemyKnown: false,               // true = enemy emoji/name visible
+  x: 0, y: 0,                     // grid position (in layout units)
+  w: 1, h: 1,                     // size in grid units (big room = 2×2, etc.)
+  connections: ["room_1", "room_3"]
+}
 ```
 
 ---
