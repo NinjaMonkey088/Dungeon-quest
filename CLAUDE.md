@@ -303,7 +303,7 @@ These are confirmed design directions for the game. When implementing any of the
 
 **Goal**: The boss room is visible on the map but the player decides when to fight it. It should not trigger automatically.
 
-**Current state**: When `wavePos >= WAVE_LENGTH-1`, `makeRoomChoices` already returns only the boss room as the single map choice — the player clicks it to start the fight. `wavePos` only advances after `startBattle` is called. The player can clear non-boss rooms freely before reaching position 5.
+**Current state**: When `wavePos >= WAVE_LENGTH-1`, `makeRoomChoices` returns only the boss room as the single map choice — the player clicks it to start the fight (no auto-trigger). `wavePos` only advances after `startBattle` is called. The player can clear non-boss rooms freely before reaching position 5. **Missing**: confirmation prompt ("THE GUARDIAN WAITS. ENTER?") and the ability to rest/camp without first entering the fight.
 
 **What's missing**:
 - No confirmation prompt ("THE GUARDIAN WAITS. ENTER?") before the fight begins.
@@ -366,7 +366,9 @@ These are confirmed design directions for the game. When implementing any of the
 
 ---
 
-### `[ ]` 8. Perk Prerequisite System & Stackable Strike Perks
+### `[~]` 8. Perk Prerequisite System & Stackable Strike Perks
+
+**Current state**: Basic perk system exists — `PERK_POOL` has 4 perks (doubleStrikeChance, ironWill, armorPierce, dualWield) with `apply` functions, and `triggerLevelUp` already filters out already-taken perks via `!currentPlayer[p.id]`. Missing: `requires` prerequisite checking, stackable flag, tripleStrikeChance and masterDualist perks, and additive stacking for doubleStrikeChance.
 
 **Goal**: Some perks should only appear once the player has taken the required earlier perk. Double Strike and Triple Strike can be picked multiple times, stacking their chances.
 
