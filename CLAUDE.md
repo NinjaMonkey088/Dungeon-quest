@@ -1,243 +1,460 @@
-# Dungeon Quest Project Prompt
+# Dungeon Quest — `index.html` Reference
 
-Dungeon Quest is a single-file browser RPG built with React 18, Babel standalone, and inline CSS inside `index.html`. It is a retro pixel-style turn-based dungeon crawler inspired by classic Zelda, Rogue, and tabletop fantasy.
+Single-file React 18 (Babel standalone, CDN) turn-based dungeon crawler. No build step. **Soft, cartoonish, whimsical** vibe — rounded **Fredoka** font, warm wood-toned panels, beveled candy buttons, emoji sprites, bouncy CSS, goofy combat banter. (Originally an 8-bit/pixel look with Press Start 2P; softened toward a wooden cartoon game-UI-kit aesthetic.) All code lives in `index.html` (~2800 lines). Edit it in place — never regenerate.
 
-The game should feel fast, readable, charming, and arcade-like. Preserve the 8-bit visual language: dark dungeon palette, chunky bordered tile boxes, small tactical text in Press Start 2P, emoji-based characters/items, simple CSS keyframe animations, and punchy combat logs.
+**Game goal**: clear 20 floors. Floor-20 boss kill → `setPhase("gamewon")`.
 
-## Core Experience
+> **Original game — NOT D&D.** Dungeon Quest is its own silly little world. Never reference *Dungeons & Dragons*, its rulebooks, class names, or any trademarked/Product-Identity content in code, UI, or docs. Game *mechanics* (a d20 roll, an ability modifier, a half-scale HP pool) are generic and fair to use; *names* are always reskinned to original cartoon terms (see [Naming convention](#naming-convention--cartoon-reskin-not-dd)). When in doubt, make it sillier and more original — that is also the safest legal direction.
 
-The player navigates a **6-room floor laid out on a 3×2 grid with fog of war**. They walk from tile to tile (adjacency only, with fast-travel through previously-visited tiles), fight one or two enemies in each room, earn XP and gold, level up, and pick an ability-score upgrade (plus a perk at levels 5, 10, 15, and 20). The boss is one of the 6 rooms; defeating it unlocks the shop AND transforms the boss tile into stairs. The player then descends when ready (no early-exit option — you must beat the boss to advance). The dungeon clears at level 21.
+---
 
-Each combat is a turn-based duel mediated by an **initiative roll on speed**. Big rooms may host two enemies fighting alongside each other — the player chooses their target each turn via clickable enemy tiles.
-- Player swings (d20-to-hit, weapon-die damage, optional offhand/double/triple strike, optional crit + procs).
-- Enemies swing one at a time (d20-to-hit, d3 + attack value, optional poison/burn/bleed/stun proc, optional counter from the player).
-- Status effects tick at the start of each enemy phase: enemy statuses first (each enemy's poison/burn/bleed), then the player's once, then alive enemies attack in array order.
+## File map — `index.html`
 
-Keep the game playable directly from the HTML file unless a requested feature truly requires a build step.
+| Lines | Section |
+|------|---------|
+| 1–18 | `<head>`, CDN scripts, base `<style>` |
+| 20–339 | **Constants & data tables** (PLAYER_BASE, pools, enemy/boss defs, equipment, dice, room types) |
+| 341–569 | **Helpers** (roll/clamp/pct, abilityMod, applyEquipment/AbilityStats/Buffs, getEffectivePlayer, item helpers) |
+| 574–685 | **Floor / enemy generation** (getFloorLayout, makeFloorMap, pickEnemy, pickBoss, scaleHit) |
+| 687–869 | **Combat resolvers** (playerAttack, enemyAttack, enemySpellAttack) — pure functions, return result shapes |
+| 871–1107 | **UI primitives** (Hearts, TileBox, Btn, EquipDisplay, BodyLayout, FloorMap, GearDetail, ItemButtons) |
+| ~1154–1173 | Inline `CSS` const — Fredoka `@import`, warm wood-gradient `body`, `.dq-btn` hover/press classes, keyframes (blink, shake, hit, crit, dodge, attack, status pulses, pop) |
+| 1131–end | **`App`** root component — state, handlers, render |
+| 1131–1200 | App state declarations + derived `ep` / `enemy` / `XP_NEEDED` |
+| 1202–1300 | Level-up, perk-pick, spell-pick handlers |
+| 1303–1370 | Creation + rest/descend handlers |
+| 1372–1442 | `handleRoomEnter`, `startBattle` |
+| 1444–1650 | `handleAction` (attack/flee), `handleCastSpell` |
+| 1651–1759 | `handleUseItem`, `handleEquipFromInventory`, dual-wield helpers, `handleSellItem` |
+| ~1600–1830 | **Initiative rounds**: `beginRound` / `runQueueFrom` / `enemyAct` / `resumeAfterPlayer` (per-round re-rolled turn order) |
+| 1995–2110 | `resolveVictory`, `buyItem` |
+| 2112–end | `restart`, full render tree (title / create / idle / combat / shop / rest / win / lose / gamewon) |
 
-## Mechanics Overview
+---
 
-### Character creation (point-buy)
+## Data tables — anchor map
 
-- New runs open with a **`create` phase** before `idle`. Player picks a **name** (≤16 chars), an **emoji** from `EMOJI_POOL` (12 options), and spends **27 points** across 6 ability scores via the `POINT_COST_STEP` table.
-- Base score for every stat is **8** (floor at character creation). Escalating per-step cost: `8→13` = 1 pt/step, `13→14, 14→15` = 2, `15→16` = 3, `16→17` = 4, `17→18` = 5. **18 is the creation cap.**
-- `BEGIN ADVENTURE` always works, even with unspent points — they bank on the player via `unspentPoints` state and persist into level-ups. Banked points show as a chip on the idle/exploration screen and inside the level-up panel.
-- `draftAdjust(statId, ±1)` refunds the exact cost when decrementing — players can re-allocate freely until they confirm.
+| Const | Line | Shape / notes |
+|------|------|--------------|
+| `PLAYER_BASE` | [20](index.html:20) | Starting hero: hp:4, hitDice:[8], armor:1, atkDmg:3, dieIdx:0, all stats:8, perks/spells empty |
+| `POINT_COST_STEP(score)` | [48](index.html:48) | Creation cost table — 1/1/1/1/1/2/2/3/4/5 for 8→18 steps; 18 cap |
+| `POINT_COST_TOTAL(score)` | [58](index.html:58) | Sum-from-8 helper |
+| `EMOJI_POOL` | [65](index.html:65) | 12 character creation emojis |
+| `STAT_POOL` | [69](index.html:69) | 6 stat-bump options for level-up (`+1` apply) |
+| `STAT_PERK_FIELD` | [83](index.html:83) | `{statId → "<short>Perk"}` map for milestone dispatch |
+| `STAT_PERKS` | [87](index.html:87) | Score-20 milestone perks — 2 options per stat |
+| `WIS_PERKS` | [114](index.html:114) | Legacy alias = `STAT_PERKS.wisdom` |
+| `PLAYER_SPELLS` | [129](index.html:129) | 6 spells. Fields: stat, req, cost, type, die, statBonus, autoHit, saveStat, onSave, effect, cureOne, stunTarget, ignoreArmor |
+| `PERK_POOL` | [154](index.html:154) | 7 perks for L5/10/15/20 picks — one-shot pool |
+| `ENEMY_DEFS` | [173](index.html:173) | 15 enemies. Each: emoji, niche, maxHp, attack, armor, hitChance, dodgeChance, speed, xp, goldMin/Max, optional spell/spellChance/attrs, behavior flags |
+| `WAVES` | [213](index.html:213) | Spawn pool weights per wave 1–5 (wave 5+ reuses last) |
+| `WAVE_BOSSES` | [222](index.html:222) | 4 wave bosses (waves 1–4) |
+| `BOSS_DEFS` | [234](index.html:234) | 4 deep bosses (wave 5+ cycle, scales with `bonus`, "ELDER" prefix at deep cycles) |
+| `SHOP_CONSUMABLES` | [249](index.html:249) | 18 items. Heal/cure flags or `onUse(p,b)` for buffs |
+| `DICE_PROGRESSION` | [272](index.html:272) | 30 dice (1–5 of D4/6/8/10/12/20) sorted by avg roll |
+| `EQUIPMENT_DEFS` | [279](index.html:279) | 35 items: 12 weapons (5 common + 7 rare), 3 shields, 13 armor/accessory, 7 rings |
+| `BODY_SLOTS` | [322](index.html:322) | 13 slot defs with grid col/row positions for `BodyLayout` |
+| `EMPTY_EQUIP` | [338](index.html:338) | `{...slots:null, rings:[]}` — initial equipment state |
+| `STAT_LABEL` | [339](index.html:339) | Abbreviation map: atkDmg→ATK, hitChance→HIT, etc. **Use in UI strings.** |
+| `ROOM_TYPES` | [556](index.html:556) | 4 fight types: small, big (`maybeDouble:true`), bridge, shrine. Stairs is NOT a room type (created on boss kill) |
+| `TRAP_ROOM` | [575](index.html:575) | Trap room def (`isTrap:true`, no enemies). `rollEnemyCount(type)` + `TRAP_ROOM_CHANCE` (20) drive room composition |
+| `BTN_VARIANTS` | [939](index.html:939) | Per-variant button theme. **Object shape**: `{fill:[topHex,botHex], border, text, edge}` (`edge` = the chunky 3D bottom-shadow color). Add new variants in this shape — `Btn` reads it. Fills stay dark so caller-supplied sub-text stays legible. |
+| `LOG_COLORS` | [919](index.html:919) | Hex map per log type: sys, player, enemy, crit, warn, level, counter, dodge, miss, gold |
 
-### Level-up (per +1 point spending)
+---
 
-- Each level-up grants **+2 unspent points** (added to any banked points). The `levelup` panel shows current STR/DEX/CON/WIS/CHA/INT, total points remaining, and one button per stat (`pickStat` spends one point for `+1`). `DONE` exits and banks any unspent points.
-- Per-step cost is **always 1 pt** during level-up (no escalating cost, no 18 cap). Character creation's cost table is creation-only.
-- WIS milestone (`WIS ≥ 20` for the first time) still triggers the `wisperk` phase mid-`pickStat`. After picking, the panel re-opens so any remaining points can be spent.
+## Function index
 
-### Attributes (D&D-style, default 8 at creation, mod = floor((score-10)/2))
+### Pure helpers (line 341–569)
 
-**Odd-stat rule**: `abilityMod` uses `floor((score-10)/2)`, so 9 = 10's mod, 11 = 10's mod, 13 = 12's mod, etc. Odd scores are "stored progress" toward the next even bump — relevant when spending banked points.
+| Fn | Line | Returns / Purpose |
+|---|---|---|
+| `roll(n)` | [343](index.html:343) | `1..n` |
+| `clamp(v,lo,hi)` | [344](index.html:344) | bounded |
+| `pct(c)` | [345](index.html:345) | bool — c% chance |
+| `getDie(i)` | [346](index.html:346) | `DICE_PROGRESSION[i]` capped |
+| `rollDiceV(idx)` | [348](index.html:348) | Sum of N dice |
+| `d20Hit(chance)` | [354](index.html:354) | `{hit, crit, fumble}` (nat 20 / nat 1) |
+| `dmgRange(atk, die)` | [359](index.html:359) | `{min,max}` for previews |
+| `applyBuffs(p, buffs)` | [364](index.html:364) | Adds `tempBuffs` stat deltas |
+| `applyEquipment(p, equip)` | [370](index.html:370) | Sums `stats:{}` from all worn gear + rings |
+| `abilityMod(score)` | [386](index.html:386) | `floor((score-10)/2)` — odd-stat rule lives here |
+| `statEffectLine(statId,score,ctx)` | [393](index.html:393) | UI string: `STR 14 → ATK +2 · HIT +10%` |
+| `applyAbilityStats(p)` | [413](index.html:413) | Converts STR/DEX/CON/WIS/CHA/INT scores + perks into atkDmg/hit/dodge/crit/speed/armor/etc. **Edit here when adding stat-driven effects.** |
+| `computeMaxHpFor(con,lvl,hd,eq)` | [459](index.html:459) | HP preview for creation/level-up |
+| `getEffectivePlayer(p,equip,buffs)` | [466](index.html:466) | Pipeline: `applyEquipment → applyAbilityStats → applyBuffs`. **Always read effective via this — never mutate `player`.** |
+| `getAvailableEquipment(equip)` | [471](index.html:471) | Pool of items the player doesn't already own |
+| `canEquipItem(item,equip,p,targetSlot)` | [482](index.html:482) | Validates light-only / Dual Wield / 2H blocks |
+| `getShopCost(item, p)` | [498](index.html:498) | `ceil(cost × (1 − discount/100))`, floor 1 |
+| `isIlliterate(p)` | [502](index.html:502) | `intMod < 0` → all gear labels become `???` |
+| `describeItem(item, p)` / `labelItem` | [504](index.html:504) | Three-tier identify gating |
+| `addToInventory` / `removeFromInventory` | [527](index.html:527) | Stack-by-id with `count` field |
+| `pickRandom(pool, n)` / `pickShopEquipment` | [518](index.html:518) | Shop roll helpers (25% rare/75% common bias) |
 
-- `strength` → +1 ATK and +5% HIT per mod
-- `dexterity` → +5% DODGE, +5% CRIT, and **+1 SPD** per mod
-- `constitution` → applied retroactively to every level's hit die roll (see HP system); +5% poison resist per positive mod
-- `wisdom` → +15% room awareness per mod (reveals room types and enemy previews on the dungeon map); **+1 HP per mod added to every heal item** (`item.heal + max(0, wisMod)` in `handleUseItem`). At WIS 20 the player picks one **WIS perk** from `WIS_PERKS` (one-time choice, scales with further WIS):
-  - **Sage's Reservoir** (`wisPerk === "reservoir"`) — every heal grants `wisMod` Temp HP (capped at `maxHp`). Temp HP is consumed before real HP during enemy attacks (handled inline in `attackOne` via the `curTempHp` local) and cleared on `startBattle`.
-  - **Swift Cure** (`wisPerk === "swift"`) — heal items roll `wisMod × 10%` chance to NOT consume the player's turn (skip `runEnemyTurn`).
-- `charisma` → -5% shop prices per mod
-- `intelligence` → +15% identify per mod (shows full equipment stats in shop at 50%+)
+### Floor & enemy gen (line 574–685)
 
-### HP system (hit dice)
+| Fn | Line | Notes |
+|---|---|---|
+| `getFloorLayout(floorNum)` | [574](index.html:574) | Returns `{cols,rows}` — 3×2 (f1–3), 3×3 (f4–7), 4×3 (f8–13), 4×4 (f14–20) |
+| `floorPositions(floorNum)` | [580](index.html:580) | Flat `[{col,row}…]` array |
+| `isAdjacentPos(a,b)` | [588](index.html:588) | Manhattan-1 |
+| `makeFloorMap(floorNum,level,p,revealAll)` | [590](index.html:590) | Builds rooms. Entrance pinned to `{0,0}` and `visited:true`. Boss is shuffled among the others, always `enemyKnown:true` |
+| `applyRoomToEnemy(e, room)` | [628](index.html:628) | Runs `room.enemyMod` if present |
+| `scaleHit(base, level)` | [635](index.html:635) | Ramps to 100 by L15, then +1/level |
+| `pickEnemy(level, {allowHealer})` | [638](index.html:638) | Rolls from `WAVES[wave-1]`; filters Witch when `allowHealer:false` |
+| `pickRoomEnemies(level, count)` | [658](index.html:658) | Calls `pickEnemy` N times. Second enemy disallows healer (no double-witch) |
+| `pickBoss(waveNumber, level)` | [665](index.html:665) | Wave 1–4 → `WAVE_BOSSES`; wave 5+ cycles `BOSS_DEFS` with bonus scaling + "ELDER" prefix |
 
-`maxHp = floor((sum(hitDice) + conMod × hitDice.length) / 2) + equipmentBonus`
+### Combat resolvers (line 687–869) — **pure**
 
-- `hitDice` is a per-level array stored on the player. Level 1 is always max (8).
-- Each level-up rolls a fresh d8 and appends. CON modifier is applied retroactively to all dice, so picking CON later still grants partial benefit to earlier levels.
-- Half-max-HP heal on level up; the d8 roll is logged.
+| Fn | Line | Returns |
+|---|---|---|
+| `playerAttack(p, e, verbose)` | [687](index.html:687) | `{total, results, didPoison, didBurn, didBleed, newBleedVal}`. Walks each weapon (main + offhand if dual-wield) + double/triple strikes. Short-circuits via `enemyDead()` once `total >= e.hp` |
+| `enemyAttack(p, e, verbose)` | [786](index.html:786) | `{dmgToPlayer, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun}` |
+| `enemySpellAttack(p, e, floor)` | [831](index.html:831) | Same shape as `enemyAttack`. DC = `8 + spell.mod + floor(waveNumber/2)`. Bypasses dodge/armor — save IS the defense. No crit. No counter (no melee swing). |
 
-### Perks
+### UI primitives (line 871–1107)
 
-- **Perk pick** every 5th level (L5, L10, L15, L20) from `PERK_POOL`. Once taken, removed from future offers.
-  - **Double Strike** — +20% chance to attack again (mainhand)
-  - **Triple Strike** — +15% chance to attack again (offhand)
-  - **Counter Strike** — +20% chance to counter-attack when hit
-  - **Iron Will** — survive one killing blow at 1 HP per battle
-  - **Armor Pierce** — crits ignore enemy armor
-  - **Dual Wield** — equip a second light weapon in offhand; both swing each turn
-  - **Master Duelist** — removes the offhand 50% damage penalty
-- XP needed = `level * 3`.
+| Component | Line | Notes |
+|---|---|---|
+| `Hearts` | [871](index.html:871) | HP rendering |
+| `TileBox` | [931](index.html:931) | Wooden panel — rounded corners, warm dark-wood gradient, beveled border, soft drop shadow. `highlight` adds a golden frame + glow. Fills stay dark so light-on-dark text still reads. |
+| `Btn` | [948](index.html:948) | Rounded beveled gradient button; `className="dq-btn"` adds hover/press feedback. Reads `BTN_VARIANTS`. |
+| `EquipDisplay` | [921](index.html:921) | Sidebar gear list |
+| `BodyLayout` | [938](index.html:938) | Click-to-select slot grid |
+| `FloorMap` | [965](index.html:965) | Fog-of-war grid. Derives dims from rooms' max `pos`. Tile minHeight shrinks on 4-wide floors. **HERE strip** rendered alongside on idle screen |
+| `GearDetail` | [1044](index.html:1044) | Selected-slot inspector |
+| `ItemButtons` | [1080](index.html:1080) | Inventory entry renderer with dual-wield `→ OFFHAND` button (gated by `canEquipOffhand`) |
 
-### Combat dice & weapons
+### `App` handlers (line 1131+)
 
-- `dieIdx` indexes into `DICE_PROGRESSION` (D2 → 40D10). Each equipped weapon overrides the player's die.
-- Weapons are classed by `hand: 'light' | 'one' | 'two'` — light weapons are 1H and dual-wieldable, regular 1H pairs with a shield, 2H locks the offhand slot.
-- Damage formula: `atkDmg + die roll − armorUsed` (crits roll the die twice). Pierce procs and the Armor Pierce perk drop `armorUsed` to 0.
-- Offhand swings deal 50% damage unless Master Duelist is picked. Bleed bonus damage applies on top.
-- Rare weapons (`rare: true`) carry procs: `poisonChance`, `burnChance`, `bleedChance`, `pierceChance` rolled per swing on damaging hits.
-- Vampiric weapons heal 2 HP on a crit (works from either hand).
+| Fn | Line | Purpose |
+|---|---|---|
+| `addLog(text, type)` | [1202](index.html:1202) | Appends to log (capped 60 entries). `type` ∈ `LOG_COLORS` keys |
+| `shake(who)` | [1203](index.html:1203) | 350 ms shake animation |
+| `triggerArenaAnim(p, e, dur)` | [1205](index.html:1205) | Player + enemy arena animation state |
+| `saveHighScore(finalGold)` | [1210](index.html:1210) | LocalStorage `dq_scores` |
+| `triggerLevelUp(newLevel, currentPlayer)` | [1217](index.html:1217) | Routes to `perk` (L5/10/15/20) or `levelup`. Tops up `unspentPoints += 2` |
+| `pickStat(stat)` | [1232](index.html:1232) | Spends 1 point. **Checks `STAT_PERK_FIELD`** — score ≥20 + field null → `statperk` phase with `milestoneStat` set |
+| `finishLevelUp()` | [1247](index.html:1247) | Banks unspent points, → `win` |
+| `pickSpell(spell)` | [1254](index.html:1254) | Learns at level 1 |
+| `upgradeSpell(spell)` | [1265](index.html:1265) | +1 level (validates `player[stat] >= req + currentLevel`) |
+| `pickPerk(perk)` | [1277](index.html:1277) | Applies perk, removes from pool, → `levelup` |
+| `pickWisPerk(perk)` | [1284](index.html:1284) | **Legacy** — kept for back-compat |
+| `pickStatPerk(perk)` | [1293](index.html:1293) | Stores on `<stat>Perk`, → back to `levelup` |
+| `beginCreation()` | [1303](index.html:1303) | Inits `draft`, `unspentPoints=27`, → `create` |
+| `draftAdjust(statId, delta)` | [1316](index.html:1316) | +/− with exact refund — uses `POINT_COST_STEP` |
+| `finishCreation()` | [1336](index.html:1336) | Commits draft, computes maxHp, sets hp=maxHp, → `idle` |
+| `enterRest()` / `descendStairs()` | [1351](index.html:1351) | Flee/rest; descend bumps wave+1, regenerates floor, `playerPos={0,0}` |
+| `handleRoomEnter(room)` | [1372](index.html:1372) | Adjacency/visited check. Branches: cleared (silent walk), descend, else `startBattle` |
+| `startBattle(room)` | [1392](index.html:1392) | Initiative + surprise (waveNumber ≥ 3 && enemyKnown===false → +5 SPD). Resets stun, decrements tempBuffs, tempHp=0 |
+| `handleAction(key)` | [1444](index.html:1444) | `"attack"` or `"flee"` (75% success). Runs `playerAttack`, applies procs, Cleaving Blow spill, victory check, else `resumeAfterPlayer` (advances the initiative queue) |
+| `handleCastSpell(spell)` | [1537](index.html:1537) | Player spell dispatch. `levelBonus = lvl − 1` adds to dmg/heal/charm |
+| `handleUseItem(item, inBattle)` | [1651](index.html:1651) | Heal (+wisMod), buff, or cure. WIS perks (`reservoir`→tempHp, `swift`→skip enemy turn). Slotted items route to `handleEquipFromInventory` |
+| `handleEquipFromInventory(item, inBattle, targetSlot)` | [1706](index.html:1706) | Equip. Displaced → inventory. Mid-fight: enemy gets free strike against NEW gear |
+| `canEquipToOffhand(item)` | [1745](index.html:1745) | Dual-wield visibility check |
+| `equipToOffhand(item, inBattle)` | [1750](index.html:1750) | Sugar — calls handleEquip with `targetSlot:'offhand'` |
+| `handleSellItem(item)` | [1753](index.html:1753) | `floor(cost/2)` min 1, one off a stack |
+| `beginRound(round, curP, curEnemies, curTempHp)` | — | Top of each round: DOT ticks + flee + **re-rolls initiative** (`speed + d10`), logs `⚡ ROUND N — …`, runs the queue |
+| `runQueueFrom(i, …)` | — | Walks the initiative queue; player slot pauses for input, enemy slot → `enemyAct` |
+| `enemyAct(i, curP, curEnemies, curTempHp, done)` | — | One enemy's turn (charm/heal/spell/melee/counter/tempHP/Iron Will) |
+| `resumeAfterPlayer(curP, curEnemies)` | — | Player handlers call this to advance the queue past the player's slot |
+| `resolveVictory(defeatedList)` | [1995](index.html:1995) | XP/gold aggregation. Fled = half. **Wave 20 boss → `gamewon`**. Else boss → transform tile to stairs + open shop. Triggers level-up chain |
+| `buyItem(item, targetSlot)` | [2077](index.html:2077) | Displaces old slot → inventory. Consumables stay in shop. 2H evicts offhand |
+| `restart()` | [2112](index.html:2112) | Full state reset → `title` |
 
-### Initiative & surprise
+---
 
-- `speed = 10 + dexMod` for the player (`applyAbilityStats`). Equipment can stack via `stats.speed`.
-- Each enemy has a `speed` value (6–15 typical; bosses vary). Compared at `startBattle`.
-- Higher speed acts first; player wins ties.
-- **Surprise**: if `room.enemyKnown === false` (the player failed the WIS preview), the enemy gets **+5 SPD for that battle** and the player can be hit before acting. Often enough to lose initiative to a normally-slower foe.
-- **Bosses are never surprised**: `bossRoom.enemyKnown` is hardcoded `true` in `makeFloorMap` so the boss tile always shows the foe and the player always gets a fair initiative roll. (A future room-less ambush-boss type — pencilled in for floor 18+ — would be the exception.)
+## `App` state (line 1131–1187)
+
+| State | Init | Purpose |
+|---|---|---|
+| `player` | `{...PLAYER_BASE}` | Persistent player — base stats only, never mutate with equipment/buffs |
+| `enemies` | `[]` | Active battle enemies (1 or 2) |
+| `targetIdx` | `0` | Which enemy player is aiming at |
+| `log` | initial msg | Combat log (capped 60 entries) |
+| `phase` | `"title"` | State machine — see Phases |
+| `ironUsed` | `false` | Iron Will fires once per battle |
+| `level` / `xp` | 1 / 0 | `XP_NEEDED = level * 3` |
+| `gold` | 0 | |
+| `levelUpOpts` / `pickedStats` / `perkOpts` | `[]` | Pick menus |
+| `waveNumber` | 1 | Current floor (1–20) |
+| `floorRooms` | `makeFloorMap(1,1,…)` | Persistent room layout |
+| `playerPos` | `{col:0,row:0}` | Fog-of-war position |
+| `shopItems` / `shopUnlocked` | | Post-boss shop |
+| `equipment` | `{...EMPTY_EQUIP}` | All worn gear |
+| `inventory` | `[]` | Stack-by-id consumables + displaced gear |
+| `tempBuffs` | `[]` | `{stat,val,battles}[]` — decrements at `startBattle` |
+| `selectingItem` / `selectingSpell` | false | UI toggles |
+| `arenaAnim` | `{player:'idle',enemy:'idle'}` | Per-frame animation state |
+| `devMode` | false | Reveals all + 0 damage + maxes WIS/INT (via `roomPlayer` at [1191](index.html:1191)) |
+| `equipOpen` / `selectedSlot` | | Body panel |
+| `poison` / `burn` / `bleed` / `stun` | 0 | Player status counters (poison/burn/bleed PERSIST between battles; stun does NOT) |
+| `tempHp` | 0 | Sage's Reservoir absorption. Cleared on `startBattle` |
+| `unspentPoints` | 0 | Banked stat points. +27 on create, +2/level |
+| `milestoneStat` | null | Set while `statperk` phase is active |
+| `draft` | null | Working state during `create` |
+| `gameStats` | `{biggestHit,biggestHitTaken,killCounts,itemsUsed}` | Stats panel |
+| `highScores` | localStorage | `dq_scores` |
+
+Derived (every render): `ep` ([1189](index.html:1189)), `idlePlayer` ([1190](index.html:1190)), `roomPlayer` ([1191](index.html:1191)), `enemy` ([1196](index.html:1196)).
+
+---
+
+## Phases (state machine)
+
+| Phase | Entered from | UI |
+|---|---|---|
+| `title` | Initial / `restart()` | Title screen + START + high scores |
+| `create` | `beginCreation` ([1303](index.html:1303)) | Point-buy hero forge |
+| `idle` | `finishCreation` ([1336](index.html:1336)), shop exit, rest | Floor map + HERE strip |
+| `player` | `runQueueFrom` reaching the player's initiative slot | Player-phase action panel |
+| `enemy` | `beginRound` (rolling) / `runQueueFrom` enemy slot | Round-resolve + animated enemy attack |
+| `win` | `resolveVictory` ([1997](index.html:1997)) and end of pick chain | "X DEFEATED" + continue button |
+| `lose` | Status death ([1806](index.html:1806), [1817](index.html:1817)) or HP death ([1981](index.html:1981)) | Game over + high-score |
+| `gamewon` | Floor-20 boss kill ([2047](index.html:2047)) | Victory screen |
+| `levelup` | `triggerLevelUp` and after sub-pickers | +1 stat / spell learn / upgrade panel |
+| `perk` | L5/10/15/20 in `triggerLevelUp` | 2-of-N perk pick from `PERK_POOL` |
+| `wisperk` | **Legacy** — kept for old saves | WIS-specific milestone picker |
+| `statperk` | `pickStat` ([1240](index.html:1240)) when stat hits 20 | Generic stat milestone picker (uses `milestoneStat`) |
+| `shop` | "ENTER SHOP" button | Shop UI |
+| `rest` | `enterRest` ([1354](index.html:1354)) | Rest screen (full heal + clear status on confirm) |
+
+---
+
+## Combat flow
+
+### `startBattle(room)` ([1392](index.html:1392))
+1. Pull `baseEnemies` from `room.enemies` (1–3). Big rooms always ≥2 (sometimes 3); other fight rooms 35% chance of 2.
+2. Surprise check: `waveNumber >= 3 && room.enemyKnown === false` → +5 SPD per enemy (biases their initiative rolls all battle).
+3. Reset `stun=0`, `tempHp=0`, decrement `tempBuffs`.
+4. Kicks off `beginRound(1, ep, battleEnemies, 0)` — initiative is rolled per round, not once.
+
+### Initiative rounds (`beginRound` / `runQueueFrom` / `enemyAct`) — **re-rolled every round**
+Combat is no longer "player phase then enemy phase". Each **round**, every living combatant (player + each enemy) rolls initiative and acts in descending order, so turns interleave (e.g. `👺 ▸ 👺 ▸ 🧝 ▸ 👺`). Round state threads through `combatRef` (`{queue, ptr, round, curP, curTempHp}`) to survive the async enemy chain + input-gated player slot.
+
+- **`rollInit(speed)`** = `speed + roll(10)`. Player wins ties (tiebreak), then random.
+- **`beginRound(round, curP, curEnemies, curTempHp)`** (600ms beat): ticks enemy DOTs + player DOTs (once each), runs flee checks, commits state, checks victory/lose, then rolls the queue, logs `⚡ ROUND N — 🧝19 ▸ 👺9 ▸ …`, and calls `runQueueFrom(0)`.
+- **`runQueueFrom(i, curP, curEnemies, curTempHp)`**: skips dead-enemy slots. At end-of-queue → Vital Surge regen → `beginRound(round+1)`. Player slot → if `stun`, clear + skip; else commit state + `setPhase("player")` + pause (handlers resume via `resumeAfterPlayer`). Enemy slot → 600ms beat → `enemyAct` → chain.
+- **`enemyAct(i, curP, curEnemies, curTempHp, done)`**: one enemy's turn — charm-skip, witch heal (2-turn cooldown), spell-vs-melee, status procs, counter, temp-HP absorb, Iron Will, death checks. Calls `done(curP, curEnemies, curTempHp, playerDied)`.
+- **`resumeAfterPlayer(curP, curEnemies)`**: player action handlers call this instead of the old `runEnemyTurn`; advances the queue from the player's stored `ptr`.
+
+### `handleAction("attack")` ([~1790](index.html:1790))
+1. Target = derived `enemy` (alive at `targetIdx`, or first alive).
+2. `playerAttack(ep, target)` runs each weapon (main, offhand-if-dual, double/triple) — short-circuits on `enemyDead()`.
+3. Vampiric heal on crit (mainhand or offhand).
+4. Apply procs to survivor: `poison:3`, `burn:3`, `bleed: max(newBleedVal, existing)`.
+5. Berserker enrage (`enragesWhenLow` + hp ≤ half) → +3 ATK.
+6. Splice target into `enemies`.
+7. **Cleaving Blow** (MIGHT 20 `cleave`): 25% chance to spill `floor(total/2)` to another live foe.
+8. Target died → auto-fall-back `targetIdx` to next alive.
+9. All dead → `resolveVictory`. Else → `resumeAfterPlayer(effectivePlayer, newEnemies)`.
+
+### Status / DOT timing
+With the round system, **DOTs tick once at the top of each round** (in `beginRound`) — enemy poison (−1 HP), burn (−2 HP), bleed (counter −1); then the player's poison/burn/bleed. Lethal player DOT → `setPhase("lose")`. Flee checks also run at round top. This replaces the old "tick at start of the enemy phase" timing. Player-side `bleed > 0` still applies a ×1.5 incoming-damage multiplier inside `enemyAct`.
+
+### Stun
+If the player is `stun`ned when their initiative slot comes up, they **lose that slot** (log "STUNNED — YOU SKIP YOUR TURN!", clear stun, advance the queue). Enemies still act in their own slots. (Old behavior gave the enemies a whole extra phase; now it's just one lost player action.)
+
+### `resolveVictory(defeatedList)` ([1995](index.html:1995))
+1. Filter null/falsy. Empty → `setPhase("win")` + return.
+2. Greed mult: `(Greed Ring ? 1.5 : 1) × (chaPerk==="lucky" ? 1.25 : 1)`.
+3. Per enemy: half rewards if `fled`. Sum XP + gold, patch `killCounts`.
+4. XP overflow → level up: roll d8, append to `hitDice`, half-effective-max heal.
+5. **Boss kill**:
+   - `waveNumber >= 20` → `saveHighScore`, `setPhase("gamewon")`. Return.
+   - Else: transform boss room in-place (`isBoss:false, descend:true, cleared:true, icon:"⇣", label:"STAIRS DOWN"`). Open shop with `pickRandom(SHOP_CONSUMABLES,3) + pickShopEquipment(avail, 2 + (chaPerk==="silver"?1:0))`.
+6. Regular kill: flip `cleared:true` on the room.
+7. Chain: `triggerLevelUp` (if leveled) else `setPhase("win")`.
+
+---
+
+## Mechanics cheat sheet
+
+### Naming convention — cartoon reskin (NOT D&D)
+
+To stay clear of the classic tabletop six, the **internal keys** stay `strength/dexterity/constitution/wisdom/charisma/intelligence` (used everywhere in code: `player.x`, `enemy.attrs.x`, `spell.stat`), but every **player-facing label** is reskinned via `STAT_LABEL` (3-letter) and `STAT_FULL`:
+
+| Internal key | Full (`STAT_FULL`) | Code (`STAT_LABEL`) |
+|---|---|---|
+| `strength` | MIGHT | MGT |
+| `dexterity` | ZIP | ZIP |
+| `constitution` | GUTS | GUT |
+| `wisdom` | SAVVY | SAV |
+| `charisma` | CHARM | CHM |
+| `intelligence` | WITS | WIT |
+
+Use `statLine(src)` to render the compact `MGT 12 · ZIP 10 · …` row; never hardcode stat labels. Likewise "saving throw / DC" terminology is reskinned to **"SHRUG (off)"** with a bare target number (no "DC"), and "hit die" → **"GROWTH DIE"**.
+
+### Ability mods & odd-stat rule
+
+`abilityMod = floor((score-10)/2)`. So 11/9 share 10's mod (+0); 13/12 share +1; 14/15 share +2. **Odd scores are stored progress.** Negative mods apply raw (no `Math.max(0)` floor) — `clamp` floors `awareness/identify/poisonResist` at 0, but `shopDiscount` and heal `wisMod` can go negative. `statEffectLine` always shows the SIGNED value.
+
+### Stat effects (`applyAbilityStats` [413](index.html:413)) — keyed by internal name
+- **strength (MIGHT)** — +1 ATK, +5% HIT per mod.
+- **dexterity (ZIP)** — +5% DODGE, +5% CRIT, +1 SPD per mod.
+- **constitution (GUTS)** — applied retroactively to every hit die roll in `hitDice`; +5% poisonResist per positive mod.
+- **wisdom (SAVVY)** — +15% awareness per mod. **All healing scales off SAVVY**: heal items add `wisMod` (`handleUseItem`); heal spells (BOO-BOO FIX, THERE-THERE) add `wisMod` to their die; Sage's Reservoir temp-HP = `wisMod`; and the Vital Surge perk regens `max(1, 1+wisMod)`/round.
+- **charisma (CHARM)** — −5% shop prices per mod.
+- **intelligence (WITS)** — +15% identify per mod (50%+ = full shop labels; mod < 0 = illiterate `???`).
+
+### HP
+
+`maxHp = floor((sum(hitDice) + conMod × hitDice.length) / 2) + equipmentBonus`. L1 always rolls max (8); each level appends a fresh d8. CON applied retroactively. Half-effective-max heal at every level-up. **Player starts at full HP** — `finishCreation` sets `hp = maxHp`.
+
+### Stat-20 milestone perks (`STAT_PERKS` [87](index.html:87))
+
+| Stat | Perk A | Perk B |
+|---|---|---|
+| STR | **brute** — +1 ATK every swing (passive in `applyAbilityStats`) | **cleave** — 25% on damaging hit → spill `floor(total/2)` to another live foe (in `handleAction` [1507](index.html:1507)) |
+| DEX | **reflex** — +5% dodge AND raises dodge cap 100→110% | **flurry** — +10% double, +5% triple strike (passive) |
+| CON | **vital** — regen `max(1, 1 + savvyMod)` HP at round end (all healing scales off SAVVY; in `runQueueFrom` end-of-queue) | **hide** — +1 ARM permanent (passive) |
+| WIS | **reservoir** — every heal grants `wisMod` Temp HP (consumed at [1954](index.html:1954)) | **swift** — heals roll `wisMod × 10%` to NOT consume turn ([1695](index.html:1695)) |
+| CHA | **silver** — +1 extra shop equipment slot ([2069](index.html:2069)) | **lucky** — +25% gold (in `greedMult` [2000](index.html:2000)) |
+| INT | **tactician** — `identify=100` regardless of INT (passive) | **arcane** — +5% to every weapon proc chance (per-swing in `playerAttack`) |
+
+Storage: `<stat>Perk` field on player (e.g. `strPerk`). Once chosen, locked for the run. Routing: `pickStat` ([1232](index.html:1232)) checks `STAT_PERK_FIELD` and routes to `statperk`.
+
+### Spells (cartoon names — `PLAYER_SPELLS` [129](index.html:129))
+
+| id | Name | Stat / req / cost | Effect |
+|---|---|---|---|
+| `zap_zap` | ZAP-ZAP | WITS 12 / 1 | 1d4, always hits, ignores armor |
+| `hotfoot` | HOTFOOT | WITS 14 / 2 | 1d10 + WIT, burn, ZIP shrug → half, ignores armor |
+| `boo_boo_fix` | BOO-BOO FIX | SAVVY 12 / 1 | heal 1d8 + SAV |
+| `there_there` | THERE-THERE | SAVVY 14 / 2 | heal 2d4 + SAV, cures 1 status |
+| `sick_burn` | SICK BURN | CHARM 12 / 1 | 1d4 + CHM, SAV shrug → avoid, ignores armor |
+| `bat_eyes` | BAT EYES | CHARM 14 / 2 | SAV shrug → skip turn(s) = spell LV |
+
+Stored as level map: `player.spells = { zap_zap: 2, boo_boo_fix: 1 }`. To reach LV N the relevant ability must be at `spell.req + N − 1`. Each upgrade adds **+1 dmg** (attack), **+1 heal HP** (heal), or **+1 charm turn** (control). Cost is the spell's `cost` field (1–2 pts). Damage/heal is a **die roll** (`spell.die`) + `statBonus` mod + `levelBonus`.
+
+Shrug-off math (player caster): `target = 8 + abilityMod(player[spell.stat]) + floor(playerLevel/2)`. Enemy rolls `d20 + abilityMod(enemy.attrs[saveStat])`. `total > target` = shook it off. Log reads `Zombie ZIP SHRUG 15-2 (13) vs 10 → SHOOK IT OFF!`. `autoHit` spells (ZAP-ZAP) skip the roll.
+
+Shrug-off math (enemy caster): `target = 8 + spell.mod + floor(waveNumber/2)`. Player rolls `d20 + abilityMod(player[spell.ability])`. **Shrug-offs bypass dodge and armor.** No crit, no counter on spells.
+
+| `onSave` | Saved dmg | Saved status |
+|---|---|---|
+| `avoid` | 0 | none |
+| `half` | `floor(dmg/2)` | none |
+| `status` | 0 | applied |
+| `both` | `floor(dmg/2)` | applied |
 
 ### Status effects
 
-- ☠ **Poison** — 1 dmg / turn for 3 turns. Resisted by CON (poisonResist% chance to ignore application). Cured by Antidote/Elixir.
-- 🔥 **Burn** — 2 dmg / turn for 3 turns. Cured by Ointment/Elixir.
-- 🩸 **Bleed** — set to `floor(weapon_avg_die + atkDmg)` on a successful bleed proc. That value is both the per-swing damage bonus AND the turn counter (decrements −1 per enemy turn). Re-procs deepen the wound (Math.max). Player-side bleed is a separate +50% incoming multiplier (legacy). Cured by Bandaid/Elixir.
-- 💫 **Stun** — skip your next turn (auto-runs another enemy turn). Cured by Smelling Salt/Elixir.
+| Status | Effect | Cure | Persists between battles? |
+|---|---|---|---|
+| ☠ Poison | 1 dmg/turn × 3 turns | Antidote / Elixir | **Yes** |
+| 🔥 Burn | 2 dmg/turn × 3 turns | Ointment / Elixir | **Yes** |
+| 🩸 Bleed | `floor(weapon_avg + atkDmg)` per swing AND turn counter; deepens via Math.max on re-proc; player-side bleed = +50% incoming dmg | Bandaid / Elixir | **Yes** |
+| 💫 Stun | Lose your initiative slot this round | Smelling Salt / Elixir | **No** (cleared at `startBattle`) |
 
-**Persistence rule**: poison / burn / bleed **carry between battles** intentionally — they're cleared only via rest, an item with a cure flag, or restart. **Stun does NOT carry** (cleared at `startBattle`).
+### Dice & weapons
 
-### Floor / room structure
+- `dieIdx` indexes `DICE_PROGRESSION` (D2 → 40D10).
+- Damage: `atkDmg + die roll − armorUsed`. Crits roll the die **twice**.
+- Pierce procs / `armorPierce` perk → `armorUsed = 0`.
+- **Offhand swings deal 70%** damage. Master Duelist removes the penalty.
+- Weapon `hand`: `light` (dual-wieldable, +built-in crit on dagger/shortsword), `one` (shield-compatible), `two` (locks offhand).
+- Rare procs per swing on damaging hits: `poisonChance`, `burnChance`, `bleedChance`, `pierceChance`. Arcane Sense (INT 20) adds +5% to each.
+- Vampiric weapons: heal 2 HP on crit (either hand).
 
-- A **floor** has `FLOOR_SIZE` (6) persistent rooms laid out on a **3×2 grid** by `makeFloorMap(floorNum, level, p, revealAll)`. Tiles get a stable `pos:{col,row}` from `FLOOR_POSITIONS`. The entrance (always position `{0,0}`) is always a fight room and is pre-`visited:true` so the player can never spawn on top of the boss. The other five tiles are populated by shuffling the boss + 4 remaining fight rooms across positions 1–5.
-- Each room carries an **`enemies` array** (1 or 2 entries pre-rolled). Big rooms have a 50% chance to spawn 2 enemies. The boss room always has exactly 1 enemy (the boss).
-- Rooms carry `cleared`, `visited`, and a stable `key`. `resolveVictory` flips `cleared:true` after a kill; `handleRoomEnter` flips `visited:true` the moment the player walks onto the tile.
-- Room types in `ROOM_TYPES`: small (clean fight), big (+gold, may spawn 2 foes via `maybeDouble:true`), bridge (swift foe / +gold), shrine (weaker foe / less gold). **Stairs is no longer a room type** — they're created on demand by the boss kill.
-- **Boss-as-room**: the boss is one of the 6 rooms on the floor, not forced at a fixed position. Player navigates to it. Defeating the boss **transforms the boss tile into a stairs tile** (`isBoss:false, descend:true, cleared:true, icon:⇣, label:"STAIRS DOWN"`) and unlocks the shop. The rest of the floor persists — the player walks back to the stairs (or clicks DESCEND in the HERE strip) when ready.
-- **Stairs descent** (`descend:true` flag): only exists after the boss is dead. `handleRoomEnter` checks `room.descend` before `room.cleared`, so the tile descends on contact regardless of cleared status. `descendStairs()` advances `waveNumber+1`, resets `playerPos` to `{0,0}`, regenerates the next floor.
-- Pre-rolled enemies + WIS-rolled `known` / `enemyKnown` flags persist for the lifetime of the floor — toggling dev mode doesn't reshuffle them; `revealAll` simply overrides the gating at render time so the player's exploration progress is preserved.
+### Initiative
 
-### Fog-of-war map
+`player.speed = 10 + dexMod` (+ equipment `stats.speed`). Compared at `startBattle`. Higher acts first; **player wins ties**. Surprise → +5 enemy SPD (gated to floor 3+). Bosses pinned `enemyKnown:true` — never surprised.
 
-- **`playerPos:{col,row}` state** tracks where the hero is standing. Resets to `{0,0}` on every floor regeneration (boss kill / stairs descent / restart).
-- **Visibility**: a tile is rendered with its full info if `visited` OR adjacent (Manhattan-1) to any visited tile, OR `revealAll` (dev mode) is on. Everything else renders as a foggy `?` cell.
-- **Movement**: clicking a tile fires `handleRoomEnter(room)`. The handler accepts the click only if the tile is visible AND either adjacent to `playerPos` or already visited (visited tiles are always "fast-travel-able" through cleared paths).
-- **Click outcomes**:
-  - Tile is already cleared → silent walk-through (`▷ YOU CROSS BACK THROUGH X.` log).
-  - Tile is uncleared, `descend:true` → `descendStairs()`.
-  - Otherwise → `startBattle(room)` against the room's pre-rolled enemies.
-- **UI** (in `FloorMap` component, replaces the old vertical button list):
-  - 3×2 grid of room tiles. Player avatar (🧝 by default) overlays the current tile.
-  - Color coding: current tile (yellow border), cleared (green), boss (red), stairs (blue), reachable (warm brown), foggy (dim).
-  - The idle screen also renders a "HERE" detail strip below the map showing the current tile's info and an `ENGAGE` / `DESCEND` button if the tile is uncleared — important for touch users who can't easily click the small map tiles.
+### Identify gating (`describeItem` / `labelItem` [504](index.html:504))
 
-### Multi-enemy combat
+| Player state | Label | Description |
+|---|---|---|
+| `isIlliterate` (INT < 10, mod < 0) | `???` | `??? — TOO ARCANE TO READ`. Slot/hand tag hidden. |
+| `0 ≤ identify < 50%` | Real label | Generic category ("VITAL GEAR" / "DEFENSIVE GEAR" / "COMBAT GEAR" / "ENCHANTED GEAR") |
+| `identify ≥ 50%` | Real label | Real description |
 
-- **State**: `enemies` (array) replaces single `enemy`. `targetIdx` tracks which enemy the player is aiming at. A derived `enemy` constant points to the alive enemy at `targetIdx` (or the first alive if the target died) so existing single-enemy reads keep working.
-- **Player turn**: `handleAction("attack")` strikes the currently-targeted enemy. Damage, procs, and berserker enrage all apply to that enemy in the `enemies` array. When the target dies, `targetIdx` auto-falls-back to the next alive enemy. Victory check is `enemies.every(e => !e || e.hp <= 0)`.
-- **Target selection**: each enemy tile in the arena (and in the right-hand stat panel for multi-foe rooms) is clickable during the player phase. A yellow border + background highlight marks the current target. Clicking switches `targetIdx`.
-- **Enemy turn** (`runEnemyTurn(p, snapshotEnemies)`): structured in 4 stages per round:
-  1. Each enemy's status (poison/burn/bleed) ticks. Enemies can die from status here.
-  2. Player status ticks once (poison/burn/bleed). Lethal status ends the run.
-  3. Per-enemy archer flee check (`fleesWhenLow`).
-  4. Each alive enemy attacks the player. Counter damage routes to the attacking enemy only. Stun, if applied at any point in the round, causes a recursive `runEnemyTurn` call after the round ends (skipping the next player turn).
-- **Resolve victory** (`resolveVictory(defeatedList)`): accepts an array of defeated enemies. XP, gold, and kill-count stats are summed across all of them. Fled enemies contribute half rewards. Boss kills (still solo) regenerate the floor + open shop. Backwards-compatible: accepts a single-enemy object too (auto-wraps in array).
+Dev mode bypasses (sets `intelligence:30, identify:95` in `roomPlayer`).
 
-### Bosses
+### Floor scaling
 
-- `WAVE_BOSSES` covers waves 1–4: **KING Boar**, **Zombie LORD**, **ARCH Dark_Wizard**, **IRON Cursed_Sword**.
-- Waves 5+ cycle `BOSS_DEFS`: **Dragon**, **Giant Cactus**, **PHANTOM Lord**, **Dark_Lord**. Scales with `bonus` and gains "ELDER" prefix after deep cycles.
-- Many enemies carry behavior flags: `poisonOnHit`, `burnsOnHit`, `bleedsOnCrit`, `stunsOnHit`, `enragesWhenLow`, `fleesWhenLow`, `immuneToCrit`, `healsAllies` (heals a wounded ally instead of attacking; self-heals when below half HP and alone).
+| Floors | Grid | Tiles |
+|---|---|---|
+| 1–3 | 3×2 | 6 |
+| 4–7 | 3×3 | 9 |
+| 8–13 | 4×3 | 12 |
+| 14–20 | 4×4 | 16 |
 
-### Equipment & inventory
+Each floor: 1 boss room + (size−1) other rooms. Entrance pinned to `{0,0}`, pre-`visited`. Boss tile shuffled into one of the others. Boss kill → tile transforms to stairs in place; shop unlocks; player walks back to descend.
 
-- **Body slots** (`BODY_SLOTS`): `weapon`, `offhand`, `mask`, `helmet`, `glasses`, `amulet`, `arms`, `torso`, `cloak`, `hands`, `belt`, `leg`, `feet` + 5 ring slots.
-- **Weapons** (12 in `EQUIPMENT_DEFS`): 5 commons (dagger, shortsword, longsword, spear, greatsword) + 7 rares (sharp dagger, keen shortsword, venom dagger, flame brand, piercing longsword, bleeding spear, vampiric blade). Hand-classed; only dual-wieldable in the offhand if the perk is taken.
-- **Shields** (3 tiers) live in the offhand slot. 2H weapons evict the offhand.
-- **Rings** (7 types incl. Ring of Greed: +50% gold but +2 dmg taken).
-- **Inventory stacking**: items stack by `id` with a `count` field. UI shows `(×N)` when count > 1. Helpers `addToInventory` / `removeFromInventory` handle the math; both consumables and displaced equipment use the same flow.
-- **Buying replaces & banks the old**: buying a slotted item evicts whatever was there into inventory (with stack-by-id), including the offhand when a 2H is equipped. Consumables stay in the shop after purchase — stack up on antidotes.
-- **Mid-fight gear swap**: equipping from inventory during the player phase **costs your turn** — the enemy gets a free strike, but it lands against your new gear's stats.
-- **Sell**: at the shop, an inventory list lets you sell anything for `floor(cost/2)` (min 1). Sells one at a time off a stack.
-- **Identify gating**: shop items show generic labels ("VITAL GEAR" / "DEFENSIVE GEAR" / "COMBAT GEAR" / "ENCHANTED GEAR") until `identify` (INT) reaches 50%. Dev mode bypasses.
+**Room composition** (in `makeFloorMap`):
+- **Entrance (i===0)** — always a single-foe fight. Never a trap, never a swarm (no floor-1 ambush).
+- **Every other room** — `TRAP_ROOM_CHANCE` (20%) to be a **trap** instead of a fight; otherwise a fight whose foe count comes from `rollEnemyCount(type)`: **big rooms always ≥2** (30% chance of 3), all other types 35% chance of 2. `pickRoomEnemies` allows at most one healer (Witch) per room.
 
-### Consumables
+### Trap rooms (`triggerTrap` [~1432](index.html:1432))
 
-- Heal items declare `heal: N` (or `"full"` for elixir). `handleUseItem` adds `max(0, wisMod)` on top, applies the WIS perk effect if any (`reservoir` → Temp HP, `swift` → free-action roll), and only then triggers `runEnemyTurn`. Cure-only items use `curePoison` / `cureBurn` / `cureBleed` / `cureStun` / `cureAll` flags (no `onUse`). Buff items still use `onUse(p,b)` to append to the buffs array.
-- **Heal**: HEALTH POTION (+4), MEGA POTION (+8), SUPER POTION (+16), ELIXIR (full HP + cures all status). All accept the wisMod bonus.
-- **Cure**: Antidote (poison), Ointment (burn), Bandaid (bleed), Smelling Salt (stun).
-- **Buffs** (1–3 battles of stat boost): oils, whetstones, scrolls, smoke bomb, talisman, cloak.
+Walking onto an uncleared `isTrap` room (routed in `handleRoomEnter` before `startBattle`) forces a **ZIP (dexterity) shrug-off**: `roll(20) + zipMod + (aware ? 5 : 0)` vs `target = 10 + floor(waveNumber/2)`. `aware` = `room.trapAware` (the awareness/WIS roll at floor-gen) OR devMode. Fail → `roll(6) + floor(waveNumber/2)` damage + 30% poison-dart rider (3 turns); lethal traps end the run. Pass → no damage. Resolves instantly, marks the room `cleared` (shows "SPRUNG"). Map tile + HERE strip render amber with a "TRAP SPOTTED (+5)" hint when aware. Trap rooms count toward the floor's "ROOMS CLEARED" tally.
+
+### Visibility / movement
+
+Tile visible if `visited` OR adjacent to any visited tile OR `revealAll` (dev). `handleRoomEnter` accepts the click only if visible AND (adjacent to `playerPos` OR already visited). Cleared visited tiles = fast-travel.
+
+### Perks (`PERK_POOL` [154](index.html:154))
+
+Offered at L5/10/15/20. One-shot — removed from pool after pick. `XP_NEEDED = level * 3`.
+
+- **Double Strike** +20% chance for a 2nd (main-hand) swing.
+- **Triple Strike** +15% chance for a 3rd swing — **chained**: only rolled if a Double Strike fired that turn (even if the Double *missed*); never guaranteed. **Gated**: not offered in the perk pool until the player already has Double Strike capability (`doubleStrikeChance > 0`, from the perk or DEX flurry). The 3rd swing uses the offhand weapon (with its penalty) when dual-wielding, else a no-penalty bonus main-hand swing. Logic in `playerAttack` ([~806](index.html:806)); pool gate in `triggerLevelUp` ([~1282](index.html:1282)).
+- **Counter Strike** +20% counter on hit
+- **Iron Will** survive one killing blow at 1 HP per battle
+- **Armor Pierce** crits ignore armor
+- **Dual Wield** equip a second light weapon
+- **Master Duelist** removes the 30% offhand damage penalty (offhand swings deal full damage). **Gated**: not offered until the player has Dual Wield — it's meaningless without an offhand. Gate in `triggerLevelUp` ([~1286](index.html:1286)).
 
 ### Rest / Flee
 
-- 75% chance to flee. Flee or rest both move to the rest screen.
-- BREAK CAMP from rest: full heal + clears all status. XP is **not** forfeited.
+75% flee success. **Camp is reachable any time from the idle/map screen** (`🏕 MAKE CAMP` button) as well as the post-victory `win` screen — both call `enterRest` → `rest` phase → BREAK CAMP fully heals + clears all status. XP is **not** forfeited. (`restUsed`/`restXpLost` state exists but currently gates nothing — camp is unlimited.)
 
-## Technical Constraints
+---
 
-- Dependency-light. No build step. React + ReactDOM + Babel from CDN.
-- Plain React state/hooks. No frameworks.
-- Read `index.html` before editing — do NOT regenerate the whole file.
-- Preserve existing mechanics unless fixing a bug or adjusting balance.
-- Effective player stats are computed every render via `getEffectivePlayer(player, equipment, tempBuffs)` which composes `applyEquipment → applyAbilityStats → applyBuffs`. Never mutate `player` with equipment/buff bonuses — they live only on the effective player.
-- Follow existing data-driven patterns when adding content:
-  - `ENEMY_DEFS`, `WAVES`, `WAVE_BOSSES`, `BOSS_DEFS`
-  - `SHOP_CONSUMABLES`, `EQUIPMENT_DEFS`
-  - `STAT_POOL`, `PERK_POOL`
-  - `BODY_SLOTS`, `ROOM_TYPES`, `STAT_LABEL`, `DICE_PROGRESSION`
+## Editing conventions
 
-## Design Direction
+- **No build step.** React + ReactDOM + Babel from CDN. No external imports.
+- **Read `index.html` before editing.** Don't regenerate the whole file. Edit in place.
+- **Never mutate `player` with equipment/buff bonuses.** They live only on the effective player from `getEffectivePlayer`.
+- **Follow data-driven patterns** when adding content. Add a row to `ENEMY_DEFS` / `EQUIPMENT_DEFS` / etc., wire it into the relevant pool, never branch on names.
+- **UI tone**: soft, cartoonish, whimsical — silly and charming, never grim, gritty, or edgy; think the warm wooden game-UI kit, not 8-bit pixel art. Rounded corners, warm wood/amber palette, beveled `Btn` + `BTN_VARIANTS`, emoji as sprites, bouncy/squishy animations. Build new panels with `TileBox` and new buttons with `Btn` so the theme stays consistent; prefer `borderRadius` + warm browns (`#6b4a28`/`#4a371d`) over sharp black `outline`s. Combat log is short, punchy, and goofy (puns, "BONK!", "+4 HP — all better!", exclamation marks welcome), color-coded via `LOG_COLORS`.
+- **Original naming only.** No D&D / *Dungeons & Dragons* references anywhere player-facing. Stats, spells, saves, and dice are reskinned to cartoon terms (see [Naming convention](#naming-convention--cartoon-reskin-not-dd) and [MAGIC_SYSTEM.md](MAGIC_SYSTEM.md)). If you spot a legacy label in code (`MAGIC MISSILE`, `FIRE BOLT`, `SAVING THROW`, raw `STR/DEX/…`), rename it — those strings are exactly what we're moving away from.
+- **Tersely show numbers** with `STAT_LABEL` abbreviations.
+- **Dev button** disables incoming damage, reveals all rooms, sets WIS+INT to 30. Toggle OFF when balance testing.
 
-- Retro fantasy dungeon tone.
-- UI stays compact and game-like, not a landing page.
-- Buttons are clear, chunky, readable (use existing `Btn` + `BTN_VARIANTS`).
-- Emoji as sprites/icons.
-- Combat log: short, dramatic, easy to scan. Use existing `LOG_COLORS` types (`sys`, `player`, `enemy`, `crit`, `warn`, `level`, `counter`, `dodge`, `miss`, `gold`).
-- Show numbers tersely with `STAT_LABEL` abbreviations (ATK, ARM, HIT, DOD, CRT, SPD).
+### Open balance issues
 
-## Combat Flow — Read Before Editing
+- **Bleed scaling**: `floor(weapon_avg + atkDmg)` per swing × bleed counter is degenerate at mid-game. Bleeding Spear + STR 14 = `+10 dmg × 10 turns` on one proc. Untuned.
+- **Starting HP fragility**: 8-CON L1 = 3 HP. CON 18 mitigates (→ 6 HP) but a dump build is thin.
 
-1. `startBattle(room)`
-   - Pulls `baseEnemies` from `room.enemies` (or a fresh 1-element fallback). Big rooms can supply 2.
-   - Computes surprise + initiative (highest enemy `finalSpeed` vs `ep.speed`).
-   - Clears `stun`. Decrements `tempBuffs`. Sets `targetIdx = 0`.
-   - If enemy wins initiative → fires `runEnemyTurn(ep, battleEnemies)` immediately. Otherwise → `setPhase("player")`.
-2. `handleAction("attack")`
-   - Target = `enemies[targetIdx]` (or first alive via the derived `enemy`).
-   - `playerAttack(ep, target)` → `{ total, results, didPoison, didBurn, didBleed, newBleedVal }`. Each weapon swings once; mainhand always, offhand if dual-wielding, double/triple strike if rolled. **Each subsequent swing short-circuits with `enemyDead()` once `total >= e.hp`** so we don't whiff against a corpse.
-   - Vampiric heal on crit (works from main or offhand vampiric weapon).
-   - Apply proc statuses to the target if it survives. Bleed value is the proc's `newBleedVal`, taking `Math.max` of any existing bleed.
-   - Berserker enrage check (per-target).
-   - Splice the updated target back into `enemies` via `setEnemies(arr => arr.map(...))`.
-   - If target died, auto-fall-back `targetIdx` to the next alive enemy.
-   - If `enemies.every(e => !e || e.hp <= 0)` → `resolveVictory(newEnemies)`. Otherwise → `runEnemyTurn(effectivePlayer, newEnemies)`.
-3. `runEnemyTurn(p, snapshotEnemies)` schedules a 750 ms `setTimeout`. Inside, in order:
-   - **Enemy status ticks** for each enemy: poison drain, burn drain, bleed counter decrement. Multiple enemies can die from status simultaneously.
-   - **Player status ticks** once (poison, burn, bleed) — lethal poison/burn ends with `setPhase("lose")`.
-   - **Archer flee check** per enemy (`fleesWhenLow`); fled enemies get `hp:0, fled:true`.
-   - If all enemies dead/fled here → `resolveVictory(curEnemies)`.
-   - **Each alive enemy attacks** in array order via a chained `setTimeout` loop (`attackOne(i)` recurses with a ~700 ms gap). Each swing is its own visible beat: own log line(s), own `triggerArenaAnim`, own `shake("player")`, own `setPlayer` HP commit. The recursive structure means React renders between attacks so the player sees each one land instead of a single batched frame. Each call to `enemyAttack(curP, e)` returns dmgToPlayer, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun. Bleed × 1.5 (player-side bleed) applies to incoming damage. Counter damage routes to the attacking enemy. Player statuses accumulate across attacks. `stunApplied` flag is set if any enemy stunned.
-   - Damage applied to player → iron will → lose → otherwise the chain falls through to `finishTurn()`. If `stunApplied`, schedule a recursive `runEnemyTurn` (next round) after 1100 ms; otherwise `setPhase("player")`.
-4. `resolveVictory(defeatedList)`
-   - Accepts an array of defeated enemies (single-enemy callers can pass an object — auto-wraps).
-   - Greed multiplier on gold; per-enemy XP / gold / kill stats aggregated. Fled enemies contribute half rewards.
-   - XP gain → possible level up (roll d8, append to hitDice, half-max heal).
-   - **If any enemy was a boss**: transform the boss room into stairs (mutate the single room, do NOT regenerate the floor; player stays on the boss tile), open shop (consumables + 2 equipment picks). `waveNumber` is bumped later by `descendStairs` when the player chooses to descend.
-   - **If regular room**: flip just that room's `cleared` flag — `setFloorRooms(rooms => rooms.map(r => r.key === roomKey ? {...r, cleared:true} : r))`. Rest of the floor persists.
-   - Trigger perk-pick phase at multiples of 5, then stat-pick phase, then `setPhase("win")`.
+### Recently tuned
 
-Status counters (`poison`, `burn`, `bleed`, `stun`) read from closure inside `runEnemyTurn` — that's intentional and represents the "value at turn start". Don't break that pattern unless rewriting the timeout chain.
+- Witch on 2-turn `healCooldown` after each heal ([1893](index.html:1893)).
+- Witches never spawn alone or two-to-a-room (`pickEnemy({allowHealer})` filter).
+- Light weapons buffed: Dagger +10% crit, Shortsword +5% crit.
+- Offhand penalty 50% → 30% (offhand swings do 70%).
+- Surprise rounds gated to floor 3+ ([1405](index.html:1405)).
 
-## Recently Added (last few sessions)
+### Recent feature additions
 
-A short list of the latest changes — older additions live in the body of this doc.
-
-- **Character creation + point-buy stat system**: New runs open in a `create` phase (name, emoji from `EMOJI_POOL`, 27-point allocation across 6 stats starting at 8). Cost table is escalating (1/1/1/1/1/2/2/3/4/5 per step from 8 to 18). Cap of 18 at creation. Unspent points bank on the player and carry into level-ups. Level-up now grants **+2 individual points** (no escalating cost during level-up); panel shows current stats and a `DONE` button. The classic STAT_POOL `+2` apply is now `+1` per pick. The WIS-20 perk milestone still fires mid-pick.
-- **Live stat effect descriptions** (`statEffectLine` helper, near `abilityMod`): each stat row in character creation shows a one-liner of what that score currently does (`STR 14 → ATK +2 · HIT +10%`, `CON 16 → HP DIE +3 · ☠ RES 15%`, etc.), updating in real time as +/- buttons are clicked. The level-up panel reuses the same helper to show `NOW:` vs `NEXT:` lines so the +1 delta is visible before clicking.
-- **Use item during exploration**: The idle/map screen now exposes the `🎒 USE ITEM` button (when inventory is non-empty), mirroring the in-combat selector. Items consumed out of battle don't trigger `runEnemyTurn`.
-- **Wisdom heal scaling + WIS perk**: WIS mod is now added to every heal (HEALTH POTION, MEGA, SUPER, ELIXIR overheal). When a stat-up first pushes wisdom to 20+, `pickStat` routes to a new `wisperk` phase where the player chooses one of two perks: **Sage's Reservoir** (heals grant `wisMod` Temp HP, absorbed before real HP, cleared on battle start) or **Swift Cure** (heals roll `wisMod × 10%` to skip the enemy turn). Both perks continue to scale with further WIS picks.
-- **Staggered multi-enemy attacks**: `runEnemyTurn`'s attack phase is now a chained `setTimeout` loop instead of a synchronous `for` over enemies. Each alive enemy's swing gets its own ~700 ms beat — own log, own arena animation, own player-HP commit, own shake. Functionally identical (both always attacked) but it now visibly reads as one-vs-many rather than a single batched frame.
-- **No-skip floors**: stairs are no longer a separate room type. Boss kill transforms the boss tile into a stairs tile in place (`isBoss:false, descend:true, cleared:true`); shop unlocks as before but the floor persists so the player can revisit cleared tiles or shop before descending. Bosses are also pinned to `enemyKnown:true` — no surprise rounds on bosses.
-- **Fog-of-war map**: 3×2 spatial grid replaces the old vertical room button list. `playerPos` state tracks the player's tile; tiles outside visited / adjacent stay foggy. A "HERE" detail strip below the map shows the current room and exposes `ENGAGE` / `DESCEND` for touch-friendly play.
-- **Witch enemy** (`healsAllies:true`, waves 4–5). Heals a wounded ally for +3 HP instead of attacking; self-heals +2 if alone and below half HP. Creates a "kill the witch first" priority puzzle in multi-enemy rooms.
-- **Multi-enemy combat in big rooms** (50% chance of 2 enemies). `enemies` array + `targetIdx` state; clickable enemy tiles in the arena pick the attack target. `runEnemyTurn` loops per-enemy through statuses, flee checks, then attacks. `ROOM_TYPES.big.enemyMod` dropped its `+HP` rider (the second enemy is the threat now).
-
-## Pending Wishlist
-
-_Empty for now._
-
-## Known Balance Concerns
-
-The user has flagged balance as "a bit broken" and explicitly deferred fixes. Things to watch when you do tune:
-
-- **Bleed scaling**: per-swing bonus = `floor(weapon_avg + atkDmg)`. A Bleeding Spear (D10 avg 5.5) with STR 14 (+2 ATK) can apply bleed for `+10 dmg/swing × 10 turns` — single proc one-shots most mid-game enemies.
-- **Multi-enemy rooms**: 2 foes attacking once each per round effectively doubles incoming damage. With the surprise bonus on top, low-WIS players can get blown up at the start of a big-room encounter.
-- **Starting HP**: 4 HP (2 hearts) is fragile against any enemy with >2 base attack. The first few rooms before CON can scale up are a high-risk window.
-- **Witch healing**: +3 HP per ally turn can exceed the player's per-turn DPS in early game, making big rooms unwinnable without crit luck.
-- **Greatsword (2D6)** raw damage outclasses every other weapon: 2-12 + ATK is just better than D10 + 1 ATK from sharp dagger. Two-handed locking the offhand is the only counterweight.
-
-## Testing Note
-
-Toggle the **DEV** button before manual testing. Dev mode disables incoming damage, reveals all room types and enemies, and acts as if you have max WIS + INT (full room awareness + identify gating bypass). Disable dev mode when testing balance.
+- **UI softening pass** — swapped Press Start 2P for rounded **Fredoka**, warm wood-gradient `body`, `TileBox` → rounded beveled wooden panel, `Btn`/`BTN_VARIANTS` → rounded candy buttons (`.dq-btn` hover/press), and rounded/warmed secondary chrome (floor map + tiles, XP bar, combat arena box, create-screen controls, info strips, DEV button). See [UI tone](#editing-conventions).
+- **Camp anytime** — `🏕 MAKE CAMP` on the idle/map screen (not only the post-combat `win` screen); both route through `enterRest`.
+- **Gear-modal stats rebuilt** — the `equipOpen` modal's stat block is now a readable cartoon card layout (combat chips + one card per attribute using `STAT_FULL` names + `statEffectLine`, plus perk/special badges), replacing the old cramped raw-`STR/DEX/CON…` text wall (which also broke the no-D&D naming rule).
+- **Per-round initiative** — combat re-rolls `speed + d10` for the player + each enemy every round and interleaves turns (`beginRound`/`runQueueFrom`/`enemyAct`/`resumeAfterPlayer` via `combatRef`). Replaced the old `runEnemyTurn` player-phase/enemy-phase split. Log shows `⚡ ROUND N — 🧝19 ▸ 👺9`.
+- **Trap rooms** (`TRAP_ROOM`, `triggerTrap`) — 20% of non-entrance rooms; ZIP shrug-off, +5 if `trapAware`.
+- **Tougher rooms** — big rooms always ≥2 foes (30% chance of 3); other fight rooms 35% chance of 2; entrance always solo.
+- **Cartoon rename** — stats MIGHT/ZIP/GUTS/SAVVY/CHARM/WITS (`STAT_LABEL`/`STAT_FULL`/`statLine`); spells ZAP-ZAP/HOTFOOT/BOO-BOO FIX/THERE-THERE/SICK BURN/BAT EYES; "shrug-off" instead of saves. Internal keys unchanged.
+- Dual-wield equip flow rebuilt — explicit `→ OFFHAND` button via `canEquipToOffhand` ([1745](index.html:1745)). `buyItem` + `handleEquipFromInventory` + `canEquipItem` all accept `targetSlot` arg.
+- All 6 stats have score-20 milestone perks (`STAT_PERKS`). Generic `pickStatPerk` + `statperk` phase. Legacy `wisperk` flow preserved.
+- Map scales with depth (`getFloorLayout`). `FloorMap` derives grid dims from rooms.
+- Game ends at floor 20 (`gamewon` from `resolveVictory`).
+- Character creation point-buy (27 pts, escalating cost, 18 cap).
+- `statEffectLine` real-time previews in create + level-up panels.
+- `🎒 USE ITEM` in idle/map screen (out-of-combat, no enemy turn).
+- WIS heal scaling (`+wisMod` on every heal) + WIS perks (Reservoir, Swift).
+- Boss kill transforms tile to stairs (no separate stairs room type).
+- Fog-of-war map + HERE strip replacing vertical room buttons.
+- Witch (`healsAllies`) added to waves 4–5.
+- Multi-enemy combat (`enemies[]` + `targetIdx`, big-room 50% double).
