@@ -1152,7 +1152,7 @@ function FloorMap({ waveNumber, floorRooms, playerPos, revealAll=false, onEnter,
   const tileMinHeight = cols >= 4 ? 62 : 78;
   return (
     <div style={{ background:"linear-gradient(165deg,#16100a,#0c0805)", border:"2px solid #4a371d", borderRadius:14, padding:"12px 10px", marginBottom:16, boxShadow:"inset 0 2px 0 rgba(255,224,160,0.05)" }}>
-      <div style={{ color:"#806030", fontSize:7, letterSpacing:"0.1em", marginBottom:10, textAlign:"center" }}>
+      <div style={{ color:"#caa86a", fontSize:10, letterSpacing:"0.08em", marginBottom:10, textAlign:"center", fontWeight:600 }}>
         DUNGEON FLOOR {waveNumber} · {cleared}/{total} CLEARED · {cols}×{rows}
       </div>
       <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols}, 1fr)`, gridTemplateRows:`repeat(${rows}, 1fr)`, gap:6 }}>
@@ -1207,7 +1207,7 @@ function FloorMap({ waveNumber, floorRooms, playerPos, revealAll=false, onEnter,
                   {room.enemies.map((e,i) => <span key={i}>{e.emoji}</span>)}
                 </div>
               )}
-              <div style={{ fontSize:6, color: isStairs?"#6080a0":done?"#608060":isBoss?"#a06060":isTrap?"#a07020":"#5a4a18", textAlign:"center" }}>
+              <div style={{ fontSize:11, fontWeight:600, color: isStairs?"#9fd8f5":done?"#93e78d":isBoss?"#e09090":isTrap?"#e0a86c":"#9a7c44", textAlign:"center" }}>
                 {isStairs ? "STAIRS" : isBoss ? "BOSS" : isTrap ? (done ? "SPRUNG" : (room.trapAware||revealAll) ? "TRAP!" : "TRAP") : done ? "CLEAR" : room.label.split(" ")[0]}
               </div>
             </div>
@@ -1270,12 +1270,12 @@ function ItemButtons({ items, onUse, onEquipOffhand, canEquipOffhand, inBattle=t
       <React.Fragment key={i}>
         <Btn onClick={()=>onUse(item,inBattle)} variant={isEquip?"stat":"shop"}>
           {mainLabel}<br />
-          <span style={{ color:isEquip?"#405870":"#503870", fontSize:8 }}>{item.desc}</span>
+          <span style={{ color:isEquip?"#405870":"#503870", fontSize:11 }}>{item.desc}</span>
         </Btn>
         {offhandOK && (
           <Btn onClick={()=>onEquipOffhand(item,inBattle)} variant="stat">
             🛡 EQUIP → OFFHAND {item.label}<br />
-            <span style={{ color:"#405870", fontSize:8 }}>DUAL WIELD · SECOND LIGHT WEAPON</span>
+            <span style={{ color:"#405870", fontSize:11 }}>DUAL WIELD · SECOND LIGHT WEAPON</span>
           </Btn>
         )}
       </React.Fragment>
@@ -2525,8 +2525,8 @@ function App() {
              style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(4,4,8,0.82)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'Fredoka', system-ui, sans-serif" }}>
           <div onClick={e=>e.stopPropagation()} style={{ width:"100%", maxWidth:430 }}>
             <TileBox highlight style={{ padding:"22px 20px", textAlign:"center" }}>
-              <div style={{ color:"#f8e000", fontSize:11, marginBottom:14, letterSpacing:"0.05em" }}>💡 {activeHint.title}</div>
-              <div style={{ color:"#cdbd86", fontSize:9, lineHeight:2.0, marginBottom:18, textAlign:"left" }}>
+              <div style={{ color:"#f8e000", fontSize:15, fontWeight:600, marginBottom:14, letterSpacing:"0.05em" }}>💡 {activeHint.title}</div>
+              <div style={{ color:"#e2cf9a", fontSize:13, lineHeight:1.8, marginBottom:18, textAlign:"left" }}>
                 {activeHint.lines.map((l,i)=><div key={i}>{l}</div>)}
               </div>
               <Btn onClick={dismissHint} variant="neutral">✓ GOT IT</Btn>
@@ -2590,10 +2590,10 @@ function App() {
               {showScores && (
                 <div style={{ marginTop:20, borderTop:"2px solid #2e2808", paddingTop:16 }}>
                   {highScores.length>0 ? highScores.map((s,i)=>(
-                    <div key={i} style={{ fontSize:7, color:"#5a4018", lineHeight:2.4 }}>
+                    <div key={i} style={{ fontSize:10, color:"#5a4018", lineHeight:2.4 }}>
                       {i+1}. 💰 {s.gold} <span style={{color:"#3a2e0a"}}>— {s.date}</span>
                     </div>
-                  )) : <div style={{ fontSize:8, color:"#5a4a18", lineHeight:2.4 }}>NO HIGH SCORES YET</div>}
+                  )) : <div style={{ fontSize:11, color:"#5a4a18", lineHeight:2.4 }}>NO HIGH SCORES YET</div>}
                 </div>
               )}
             </TileBox>
@@ -2744,11 +2744,11 @@ function App() {
           {phase==="gamewon" && (
             <TileBox highlight style={{ textAlign:"center", padding:24 }}>
               <div style={{ color:"#f8e000", fontSize:12, marginBottom:6, animation:"blink 0.8s infinite" }}>★ THE BARON IS EVICTED! ★</div>
-              <div style={{ color:"#80d0f8", fontSize:8, marginBottom:16, lineHeight:2.4 }}>BARON VON BACON DEFEATED ON FLOOR 20!<br />FINAL LV {level}  ·  FINAL GOLD: 💰 {gold}</div>
-              <div style={{ color:"#cdbd86", fontSize:8, lineHeight:2.0, marginBottom:18, textAlign:"left" }}>
+              <div style={{ color:"#80d0f8", fontSize:11, marginBottom:16, lineHeight:2.4 }}>BARON VON BACON DEFEATED ON FLOOR 20!<br />FINAL LV {level}  ·  FINAL GOLD: 💰 {gold}</div>
+              <div style={{ color:"#cdbd86", fontSize:11, lineHeight:2.0, marginBottom:18, textAlign:"left" }}>
                 {STORY.ending.map((l,i)=><div key={i} style={{ minHeight: l ? "auto" : "0.8em" }}>{l}</div>)}
               </div>
-              <div style={{ textAlign:"left", fontSize:8, color:"#5a4a18", lineHeight:2.4, marginBottom:20 }}>
+              <div style={{ textAlign:"left", fontSize:11, color:"#5a4a18", lineHeight:2.4, marginBottom:20 }}>
                 {gameStats.biggestHit>0      && <div>⚔ BIGGEST HIT: <span style={{color:"#50d850"}}>{gameStats.biggestHit} DMG</span></div>}
                 {gameStats.biggestHitTaken>0 && <div>💥 BIGGEST HIT TAKEN: <span style={{color:"#e04040"}}>{gameStats.biggestHitTaken} DMG</span></div>}
                 {mostKilled && <div>💀 MOST KILLED: <span style={{color:"#f8c840"}}>{mostKilled[0]} ×{mostKilled[1]}</span></div>}
@@ -2765,7 +2765,7 @@ function App() {
                   <div style={{ textAlign:"center", flex:1 }}>
                     <div style={{ fontSize:44, lineHeight:1, display:"inline-block", animation:playerAnim }}>{player.emoji}</div>
                     <div style={{ height:2, background:"#1c2210", margin:"6px auto 0", width:56 }} />
-                    <div style={{ fontSize:6, color:"#303820", marginTop:4 }}>
+                    <div style={{ fontSize:9, color:"#303820", marginTop:4 }}>
                       {player.name}
                       {stun>0   && <span style={{color:"#80d0f8"}}> 💫</span>}
                       {poison>0 && <span style={{color:"#80d050"}}> ☠</span>}
@@ -2799,7 +2799,7 @@ function App() {
                             {isDead ? "💀" : e.emoji}
                           </div>
                           <div style={{ height:2, background:"#1c2210", margin:"6px auto 0", width:56 }} />
-                          <div style={{ fontSize:6, color:e.isBoss?"#6a5000":"#3a2010", marginTop:4 }}>
+                          <div style={{ fontSize:9, color:e.isBoss?"#6a5000":"#3a2010", marginTop:4 }}>
                             {e.name}
                             {e.immuneToCrit && <span style={{color:"#80b8e8"}}> 🛡</span>}
                             {e.poisonOnHit  && <span style={{color:"#80d050"}}> ☠</span>}
@@ -2823,8 +2823,8 @@ function App() {
                   <div className={shaking==="player"?"shake":""}>
                     <div style={{ fontSize:10, color:"#b8a840", marginBottom:10 }}>{player.emoji} {player.name}</div>
                     <Hearts hp={ep.hp} maxHp={ep.maxHp} />
-                    {tempHp>0 && <div style={{ fontSize:7, color:"#80b8e8", marginTop:4 }}>✦ TEMP HP +{tempHp}</div>}
-                    <div style={{ fontSize:8, color:"#5a4a18", marginTop:8, lineHeight:2.2 }}>
+                    {tempHp>0 && <div style={{ fontSize:10, color:"#80b8e8", marginTop:4 }}>✦ TEMP HP +{tempHp}</div>}
+                    <div style={{ fontSize:11, color:"#5a4a18", marginTop:8, lineHeight:2.2 }}>
                       ATK {dmgRange(ep.atkDmg,ep.dieIdx)} · ARM {ep.armor} · SPD {ep.speed}<br />
                       HIT {ep.hitChance}% · CRT {ep.critChance}%
                       {ep.dodgeChance>0       && <> · DOD {ep.dodgeChance}%</>}
@@ -2834,14 +2834,14 @@ function App() {
                     {(equipment.rings.length>0||BODY_SLOTS.some(s=>equipment[s.key])) && (
                       <div style={{ marginTop:6 }}><EquipDisplay equip={equipment} /></div>
                     )}
-                    {stun>0   && <div style={{ fontSize:7, color:"#80d0f8", marginTop:6 }}>💫 STUNNED · TURN SKIPPED</div>}
-                    {poison>0 && <div style={{ fontSize:7, color:"#80d050", marginTop:2 }}>☠ POISONED {poison} TURNS</div>}
-                    {burn>0   && <div style={{ fontSize:7, color:"#e08020", marginTop:2 }}>🔥 BURNING {burn} TURNS</div>}
-                    {bleed>0  && <div style={{ fontSize:7, color:"#e04040", marginTop:2 }}>🩸 BLEEDING {bleed} TURNS · +50% DMG</div>}
+                    {stun>0   && <div style={{ fontSize:10, color:"#80d0f8", marginTop:6 }}>💫 STUNNED · TURN SKIPPED</div>}
+                    {poison>0 && <div style={{ fontSize:10, color:"#80d050", marginTop:2 }}>☠ POISONED {poison} TURNS</div>}
+                    {burn>0   && <div style={{ fontSize:10, color:"#e08020", marginTop:2 }}>🔥 BURNING {burn} TURNS</div>}
+                    {bleed>0  && <div style={{ fontSize:10, color:"#e04040", marginTop:2 }}>🩸 BLEEDING {bleed} TURNS · +50% DMG</div>}
                     {tempBuffs.length>0 && (
                       <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:8 }}>
                         {tempBuffs.map((b,i)=>(
-                          <span key={i} style={{ fontSize:7, color:"#50d850", background:"#0a1a0a", border:"1px solid #205020", padding:"2px 5px" }}>
+                          <span key={i} style={{ fontSize:10, color:"#50d850", background:"#0a1a0a", border:"1px solid #205020", padding:"2px 5px" }}>
                             +{b.val} {STAT_LABEL[b.stat]} {b.battles}B
                           </span>
                         ))}
@@ -2870,18 +2870,18 @@ function App() {
                                borderRadius: 4,
                              }}>
                           <div style={{ fontSize:10, color: isDead ? "#604030" : e.isBoss ? "#f8e000" : "#e07050", marginBottom:4 }}>
-                            {isDead ? "💀 " : ""}{e.emoji} {e.name}{enemies.length>1 && isTarget && <span style={{ color:"#f8e000", fontSize:7 }}> ◀ TARGET</span>}
+                            {isDead ? "💀 " : ""}{e.emoji} {e.name}{enemies.length>1 && isTarget && <span style={{ color:"#f8e000", fontSize:10 }}> ◀ TARGET</span>}
                           </div>
-                          {e.niche        && !isDead && <div style={{ fontSize:7, color:"#604030", marginBottom:8 }}>[{e.niche}]</div>}
-                          {e.immuneToCrit && !isDead && <div style={{ fontSize:7, color:"#80b8e8", marginBottom:4 }}>🛡 CRIT IMMUNE</div>}
-                          {e.poisonOnHit  && !isDead && <div style={{ fontSize:7, color:"#80d050", marginBottom:4 }}>☠ POISONS ON HIT</div>}
-                          {e.burnsOnHit   && !isDead && <div style={{ fontSize:7, color:"#e08020", marginBottom:4 }}>🔥 BURNS ON HIT</div>}
-                          {e.stunsOnHit   && !isDead && <div style={{ fontSize:7, color:"#80d0f8", marginBottom:4 }}>💫 STUNS ON HIT (30%)</div>}
-                          {e.healsAllies  && !isDead && <div style={{ fontSize:7, color:"#f880e0", marginBottom:4 }}>✦ HEALS ALLIES · KILL FIRST</div>}
-                          {e.enraged      && !isDead && <div style={{ fontSize:7, color:"#e04040", marginBottom:4 }}>⚡ ENRAGED! ATK {e.attack}</div>}
+                          {e.niche        && !isDead && <div style={{ fontSize:10, color:"#604030", marginBottom:8 }}>[{e.niche}]</div>}
+                          {e.immuneToCrit && !isDead && <div style={{ fontSize:10, color:"#80b8e8", marginBottom:4 }}>🛡 CRIT IMMUNE</div>}
+                          {e.poisonOnHit  && !isDead && <div style={{ fontSize:10, color:"#80d050", marginBottom:4 }}>☠ POISONS ON HIT</div>}
+                          {e.burnsOnHit   && !isDead && <div style={{ fontSize:10, color:"#e08020", marginBottom:4 }}>🔥 BURNS ON HIT</div>}
+                          {e.stunsOnHit   && !isDead && <div style={{ fontSize:10, color:"#80d0f8", marginBottom:4 }}>💫 STUNS ON HIT (30%)</div>}
+                          {e.healsAllies  && !isDead && <div style={{ fontSize:10, color:"#f880e0", marginBottom:4 }}>✦ HEALS ALLIES · KILL FIRST</div>}
+                          {e.enraged      && !isDead && <div style={{ fontSize:10, color:"#e04040", marginBottom:4 }}>⚡ ENRAGED! ATK {e.attack}</div>}
                           {!isDead && <Hearts hp={e.hp} maxHp={e.maxHp} />}
                           {!isDead && (
-                            <div style={{ fontSize:8, color:"#5a4a18", marginTop:8, lineHeight:2.2 }}>
+                            <div style={{ fontSize:11, color:"#5a4a18", marginTop:8, lineHeight:2.2 }}>
                               ATK {dmgRange(e.attack,{count:1,size:3})} · ARM {e.armor} · SPD {e.speed||10}{e.surprised && <span style={{color:"#e08020"}}> 💢</span>}<br />
                               HIT {e.hitChance}%{e.dodgeChance>0&&<> · DOD {e.dodgeChance}%</>}
                               <span style={{color:"#a08020"}}> · 💰{e.goldMin}-{e.goldMax}</span>
@@ -2892,9 +2892,9 @@ function App() {
                               )}
                             </div>
                           )}
-                          {!isDead && e.poison>0 && <div style={{ fontSize:7, color:"#80d050", marginTop:6 }}>☠ POISONED {e.poison} TURNS</div>}
-                          {!isDead && e.burn>0   && <div style={{ fontSize:7, color:"#e08020", marginTop:2 }}>🔥 BURNING {e.burn} TURNS</div>}
-                          {!isDead && e.bleed>0  && <div style={{ fontSize:7, color:"#e04040", marginTop:2 }}>🩸 BLEEDING {Math.ceil(e.bleed)} · +{Math.floor(e.bleed)} DMG/HIT</div>}
+                          {!isDead && e.poison>0 && <div style={{ fontSize:10, color:"#80d050", marginTop:6 }}>☠ POISONED {e.poison} TURNS</div>}
+                          {!isDead && e.burn>0   && <div style={{ fontSize:10, color:"#e08020", marginTop:2 }}>🔥 BURNING {e.burn} TURNS</div>}
+                          {!isDead && e.bleed>0  && <div style={{ fontSize:10, color:"#e04040", marginTop:2 }}>🩸 BLEEDING {Math.ceil(e.bleed)} · +{Math.floor(e.bleed)} DMG/HIT</div>}
                         </div>
                       );
                     })}
@@ -2915,7 +2915,7 @@ function App() {
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                     {perkOpts.map(opt=>(
                       <Btn key={opt.id} onClick={()=>pickPerk(opt)} variant="gold">
-                        ▶ {opt.label}<br /><span style={{color:"#806010",fontSize:8}}>{opt.desc}</span>
+                        ▶ {opt.label}<br /><span style={{color:"#806010",fontSize:11}}>{opt.desc}</span>
                       </Btn>
                     ))}
                   </div>
@@ -2929,7 +2929,7 @@ function App() {
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                     {WIS_PERKS.map(opt=>(
                       <Btn key={opt.id} onClick={()=>pickWisPerk(opt)} variant="stat">
-                        ▶ {opt.label}<br /><span style={{color:"#405870",fontSize:8}}>{opt.desc}</span>
+                        ▶ {opt.label}<br /><span style={{color:"#405870",fontSize:11}}>{opt.desc}</span>
                       </Btn>
                     ))}
                   </div>
@@ -2943,7 +2943,7 @@ function App() {
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                     {STAT_PERKS[milestoneStat].map(opt=>(
                       <Btn key={opt.id} onClick={()=>pickStatPerk(opt)} variant="gold">
-                        ▶ {opt.label}<br /><span style={{color:"#806010",fontSize:8}}>{opt.desc}</span>
+                        ▶ {opt.label}<br /><span style={{color:"#806010",fontSize:11}}>{opt.desc}</span>
                       </Btn>
                     ))}
                   </div>
@@ -2953,11 +2953,11 @@ function App() {
               {phase==="levelup" && (
                 <TileBox highlight style={{ padding:18 }}>
                   <div style={{ color:"#f8e000", fontSize:10, marginBottom:6 }}>★ LEVEL UP! SPEND POINTS</div>
-                  <div style={{ color:"#5a4a18", fontSize:8, marginBottom:10 }}>ONE POINT = +1 STAT · LEAVE ANY UNSPENT</div>
+                  <div style={{ color:"#5a4a18", fontSize:11, marginBottom:10 }}>ONE POINT = +1 STAT · LEAVE ANY UNSPENT</div>
                   <div style={{ background:"#120c06", border:"2px solid #4a371d", borderRadius:10, padding:"7px 11px", marginBottom:10, fontSize:10, color:"#a3daf6", textAlign:"center" }}>
                     POINTS REMAINING · {unspentPoints}
                   </div>
-                  <div style={{ fontSize:7, color:"#5a4a18", marginBottom:10, lineHeight:1.8 }}>
+                  <div style={{ fontSize:10, color:"#5a4a18", marginBottom:10, lineHeight:1.8 }}>
                     {statLine(player)}
                   </div>
                   <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -2966,9 +2966,9 @@ function App() {
                       const disabled = unspentPoints <= 0;
                       return (
                         <Btn key={opt.id} onClick={()=>pickStat(opt)} variant="stat" disabled={disabled}>
-                          ▶ {opt.label} <span style={{color:"#405870",fontSize:8}}>({curScore} → {curScore+1})</span>
-                          <br /><span style={{color:"#405870",fontSize:8}}>NOW: {statEffectLine(opt.id, curScore, {level, hitDice:player.hitDice})}</span>
-                          <br /><span style={{color:"#608060",fontSize:8}}>NEXT: {statEffectLine(opt.id, curScore+1, {level, hitDice:player.hitDice})}</span>
+                          ▶ {opt.label} <span style={{color:"#405870",fontSize:11}}>({curScore} → {curScore+1})</span>
+                          <br /><span style={{color:"#405870",fontSize:11}}>NOW: {statEffectLine(opt.id, curScore, {level, hitDice:player.hitDice})}</span>
+                          <br /><span style={{color:"#608060",fontSize:11}}>NEXT: {statEffectLine(opt.id, curScore+1, {level, hitDice:player.hitDice})}</span>
                         </Btn>
                       );
                     })}
@@ -2987,7 +2987,7 @@ function App() {
                       <div style={{ marginTop:12, paddingTop:10, borderTop:"1px solid #2e2808" }}>
                         {upgradable.length > 0 && (
                           <>
-                            <div style={{ fontSize:8, color:"#80b8e8", marginBottom:8 }}>✦ UPGRADE A SPELL</div>
+                            <div style={{ fontSize:11, color:"#80b8e8", marginBottom:8 }}>✦ UPGRADE A SPELL</div>
                             <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:learnable.length>0?14:0 }}>
                               {upgradable.map(sp => {
                                 const cur = spells[sp.id];
@@ -2995,8 +2995,8 @@ function App() {
                                 const canAfford = unspentPoints >= sp.cost;
                                 return (
                                   <Btn key={`up_${sp.id}`} onClick={()=>upgradeSpell(sp)} variant="stat" disabled={!canAfford}>
-                                    {sp.emoji} {sp.name} <span style={{color:"#80b8e8",fontSize:8}}>LV {cur} → LV {next}</span> <span style={{color:"#806030",fontSize:8}}>(COST {sp.cost})</span>
-                                    <br /><span style={{color:"#608060",fontSize:7}}>+1 {sp.type==="heal"?"HEAL":sp.type==="control"?"TURN":"DMG"}</span>
+                                    {sp.emoji} {sp.name} <span style={{color:"#80b8e8",fontSize:11}}>LV {cur} → LV {next}</span> <span style={{color:"#806030",fontSize:11}}>(COST {sp.cost})</span>
+                                    <br /><span style={{color:"#608060",fontSize:10}}>+1 {sp.type==="heal"?"HEAL":sp.type==="control"?"TURN":"DMG"}</span>
                                   </Btn>
                                 );
                               })}
@@ -3005,15 +3005,15 @@ function App() {
                         )}
                         {learnable.length > 0 && (
                           <>
-                            <div style={{ fontSize:8, color:"#80b8e8", marginBottom:8 }}>✦ LEARN A SPELL (instead of a stat point)</div>
+                            <div style={{ fontSize:11, color:"#80b8e8", marginBottom:8 }}>✦ LEARN A SPELL (instead of a stat point)</div>
                             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                               {learnable.map(sp => {
                                 const canAfford = unspentPoints >= sp.cost;
                                 return (
                                   <Btn key={sp.id} onClick={()=>pickSpell(sp)} variant="stat" disabled={!canAfford}>
-                                    {sp.emoji} {sp.name} <span style={{color:"#806030",fontSize:8}}>(COST {sp.cost})</span>
-                                    <br /><span style={{color:"#405870",fontSize:8}}>{sp.desc}</span>
-                                    <br /><span style={{color:"#608060",fontSize:7}}>REQ {sp.stat.slice(0,3).toUpperCase()} {sp.req}+</span>
+                                    {sp.emoji} {sp.name} <span style={{color:"#806030",fontSize:11}}>(COST {sp.cost})</span>
+                                    <br /><span style={{color:"#405870",fontSize:11}}>{sp.desc}</span>
+                                    <br /><span style={{color:"#608060",fontSize:10}}>REQ {sp.stat.slice(0,3).toUpperCase()} {sp.req}+</span>
                                   </Btn>
                                 );
                               })}
@@ -3024,7 +3024,7 @@ function App() {
                     );
                   })()}
                   <div style={{ marginTop:12 }}>
-                    <Btn onClick={finishLevelUp} variant="neutral">▶ DONE{unspentPoints>0 && <span style={{color:"#806030",fontSize:8}}> ({unspentPoints} BANKED)</span>}</Btn>
+                    <Btn onClick={finishLevelUp} variant="neutral">▶ DONE{unspentPoints>0 && <span style={{color:"#806030",fontSize:11}}> ({unspentPoints} BANKED)</span>}</Btn>
                   </div>
                 </TileBox>
               )}
@@ -3059,7 +3059,7 @@ function App() {
                 <TileBox>
                   {selectingItem ? (
                     <>
-                      <div style={{ fontSize:8, color:"#c080f8", marginBottom:12 }}>🎒 USE WHICH ITEM?</div>
+                      <div style={{ fontSize:11, color:"#c080f8", marginBottom:12 }}>🎒 USE WHICH ITEM?</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                         <ItemButtons items={inventory} onUse={handleUseItem} onEquipOffhand={equipToOffhand} canEquipOffhand={canEquipToOffhand} inBattle={true} />
                         <Btn onClick={()=>setSelectingItem(false)} variant="flee">✕ CANCEL</Btn>
@@ -3067,7 +3067,7 @@ function App() {
                     </>
                   ) : selectingSpell ? (
                     <>
-                      <div style={{ fontSize:8, color:"#80b8e8", marginBottom:12 }}>✦ CAST WHICH SPELL?</div>
+                      <div style={{ fontSize:11, color:"#80b8e8", marginBottom:12 }}>✦ CAST WHICH SPELL?</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                         {Object.keys(player.spells||{}).map(id => {
                           const sp = PLAYER_SPELLS.find(s => s.id === id);
@@ -3075,8 +3075,8 @@ function App() {
                           const lvl = player.spells[id] || 1;
                           return (
                             <Btn key={sp.id} onClick={()=>handleCastSpell(sp)} variant="stat">
-                              {sp.emoji} {sp.name} <span style={{color:"#80b8e8",fontSize:8}}>LV {lvl}</span><br />
-                              <span style={{color:"#405870",fontSize:8}}>{sp.desc}</span>
+                              {sp.emoji} {sp.name} <span style={{color:"#80b8e8",fontSize:11}}>LV {lvl}</span><br />
+                              <span style={{color:"#405870",fontSize:11}}>{sp.desc}</span>
                             </Btn>
                           );
                         })}
@@ -3085,7 +3085,7 @@ function App() {
                     </>
                   ) : (
                     <>
-                      <div style={{ fontSize:8, color:"#5a4a18", marginBottom:12 }}>▶ CHOOSE ACTION</div>
+                      <div style={{ fontSize:11, color:"#5a4a18", marginBottom:12 }}>▶ CHOOSE ACTION</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                         <Btn onClick={()=>handleAction("attack")} variant="attack">
                           ⚔  ATTACK
@@ -3111,14 +3111,14 @@ function App() {
           {phase==="shop" && (
             <TileBox highlight style={{ padding:20 }}>
               <div style={{ fontSize:13, color:"#c080f8", marginBottom:4, textAlign:"center" }}>🏪 MERCHANT</div>
-              <div style={{ fontSize:8, color:"#604090", marginBottom:10, textAlign:"center" }}>💰 {gold} GOLD</div>
+              <div style={{ fontSize:11, color:"#604090", marginBottom:10, textAlign:"center" }}>💰 {gold} GOLD</div>
               <div style={{ background:"#06030f", border:"2px solid #3a1860", padding:"12px 8px", marginBottom:16, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-                <div style={{ fontSize:7, color:"#503870", letterSpacing:"0.1em" }}>EQUIPPED GEAR</div>
+                <div style={{ fontSize:10, color:"#503870", letterSpacing:"0.1em" }}>EQUIPPED GEAR</div>
                 <BodyLayout equip={equipment} cellSize={34} />
               </div>
               {shopItems.filter(i=>i.slot).length>0 && (
                 <>
-                  <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>⚙ EQUIPMENT</div>
+                  <div style={{ fontSize:10, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>⚙ EQUIPMENT</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
                     {shopItems.filter(i=>i.slot).map(item=>{
                       const cost = getShopCost(item,idlePlayer);
@@ -3138,14 +3138,14 @@ function App() {
                         <React.Fragment key={item.id}>
                           <Btn onClick={()=>buyItem(item)} variant="shop" disabled={gold<cost || !equipOK}>
                             {item.emoji} {labelItem(item,roomPlayer)}  <span style={{color:"#f8c840"}}>[{cost}💰]</span>
-                            {!illiterate && <span style={{color:"#806040",fontSize:7}}> [{slotTag}]</span>}<br />
-                            <span style={{color:"#503870",fontSize:8}}>{describeItem(item,roomPlayer)}</span>
-                            {reason && !illiterate && <><br /><span style={{color:"#e08020",fontSize:7}}>⚠ {reason}</span></>}
+                            {!illiterate && <span style={{color:"#806040",fontSize:10}}> [{slotTag}]</span>}<br />
+                            <span style={{color:"#503870",fontSize:11}}>{describeItem(item,roomPlayer)}</span>
+                            {reason && !illiterate && <><br /><span style={{color:"#e08020",fontSize:10}}>⚠ {reason}</span></>}
                           </Btn>
                           {offhandOK && (
                             <Btn onClick={()=>buyItem(item, 'offhand')} variant="stat" disabled={gold<cost}>
                               🛡 {item.emoji} {labelItem(item,roomPlayer)} → OFFHAND  <span style={{color:"#f8c840"}}>[{cost}💰]</span><br />
-                              <span style={{color:"#405870",fontSize:8}}>DUAL WIELD · SECOND LIGHT WEAPON</span>
+                              <span style={{color:"#405870",fontSize:11}}>DUAL WIELD · SECOND LIGHT WEAPON</span>
                             </Btn>
                           )}
                         </React.Fragment>
@@ -3156,14 +3156,14 @@ function App() {
               )}
               {shopItems.filter(i=>!i.slot).length>0 && (
                 <>
-                  <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>🧪 CONSUMABLES</div>
+                  <div style={{ fontSize:10, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>🧪 CONSUMABLES</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
                     {shopItems.filter(i=>!i.slot).map(item=>{
                       const cost=getShopCost(item,idlePlayer);
                       return (
                         <Btn key={item.id} onClick={()=>buyItem(item)} variant="shop" disabled={gold<cost}>
                           ▶ {labelItem(item,roomPlayer)}  <span style={{color:"#f8c840"}}>[{cost}💰]</span><br />
-                          <span style={{color:"#503870",fontSize:8}}>{describeItem(item,roomPlayer)}</span>
+                          <span style={{color:"#503870",fontSize:11}}>{describeItem(item,roomPlayer)}</span>
                         </Btn>
                       );
                     })}
@@ -3173,7 +3173,7 @@ function App() {
               {shopItems.length===0 && <div style={{ color:"#604090", fontSize:9, textAlign:"center", padding:12, marginBottom:14 }}>SOLD OUT</div>}
               {inventory.length>0 && (
                 <>
-                  <div style={{ fontSize:7, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>💰 SELL FROM BAG ({inventory.length})</div>
+                  <div style={{ fontSize:10, color:"#806030", letterSpacing:"0.1em", marginBottom:8 }}>💰 SELL FROM BAG ({inventory.length})</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
                     {inventory.map((item,i)=>{
                       const sellValue = Math.max(1, Math.floor((item.cost||0)/2));
@@ -3183,7 +3183,7 @@ function App() {
                       return (
                         <Btn key={`sell_${i}`} onClick={()=>handleSellItem(item)} variant="gold">
                           {isEquip?'⚔':'▶'} {item.label}{countTag}  <span style={{color:"#f8c840"}}>[+{sellValue}💰]</span><br />
-                          <span style={{color:"#806010",fontSize:8}}>{item.desc}</span>
+                          <span style={{color:"#806010",fontSize:11}}>{item.desc}</span>
                         </Btn>
                       );
                     })}
@@ -3198,10 +3198,10 @@ function App() {
             <TileBox style={{ textAlign:"center", padding:32 }}>
               <div style={{ fontSize:32, marginBottom:16 }}>🏕️</div>
               <div style={{ color:"#b8a840", fontSize:10, marginBottom:8, lineHeight:2.4 }}>CAMPFIRE LIT<br />WOUNDS MENDED</div>
-              <div style={{ color:"#5a4a18", fontSize:8, marginBottom:6, lineHeight:2 }}>
+              <div style={{ color:"#5a4a18", fontSize:11, marginBottom:6, lineHeight:2 }}>
                 ENEMIES STILL ROAM THE HALLS
               </div>
-              <div style={{ color:"#50c050", fontSize:8, marginBottom:24, lineHeight:2 }}>HP FULLY RESTORED · STATUS CLEARED</div>
+              <div style={{ color:"#50c050", fontSize:11, marginBottom:24, lineHeight:2 }}>HP FULLY RESTORED · STATUS CLEARED</div>
               <Btn onClick={()=>{ setPlayer(p=>({...p,hp:getEffectivePlayer(p,equipment).maxHp})); setPoison(0); setBurn(0); setBleed(0); setStun(0); setPhase("idle"); }} variant="neutral">▶ BREAK CAMP</Btn>
             </TileBox>
           )}
@@ -3210,7 +3210,7 @@ function App() {
             <TileBox style={{ textAlign:"center", padding:28 }}>
               <div style={{ fontSize:34, marginBottom:14 }}>🧝🧭🕯️</div>
               <div style={{ color:"#b8a840", fontSize:10, marginBottom:8, lineHeight:2.4 }}>CHOOSE YOUR PATH</div>
-              <div style={{ color:"#3a2e0a", fontSize:7, marginBottom:14, letterSpacing:"0.08em" }}>
+              <div style={{ color:"#a88a52", fontSize:11, marginBottom:14, letterSpacing:"0.06em" }}>
                 FLOOR {waveNumber} · {clearedFightRooms}/{totalFightRooms} CLEARED
               </div>
               <FloorMap waveNumber={waveNumber} floorRooms={floorRooms} playerPos={playerPos}
@@ -3235,9 +3235,9 @@ function App() {
                            : here.desc;
                 return (
                   <div style={{ background:"linear-gradient(165deg,#1b130a,#100b06)", border:"2px solid #4a371d", borderRadius:12, padding:"11px 13px", marginBottom:14, textAlign:"left", boxShadow:"inset 0 2px 0 rgba(255,224,160,0.06)" }}>
-                    <div style={{ fontSize:9, color:"#f8e000", marginBottom:6 }}>{here.icon} HERE: {here.label}{here.cleared?(here.isTrap?" (SPRUNG)":" (CLEARED)"):""}</div>
-                    <div style={{ fontSize:8, color: here.isTrap&&!here.cleared?"#e0a040":"#608060", lineHeight:1.8 }}>{desc}</div>
-                    {preview && <div style={{ fontSize:8, color:"#e08020", marginTop:4 }}>⚠ {preview}</div>}
+                    <div style={{ fontSize:13, color:"#f8e000", fontWeight:600, marginBottom:8 }}>{here.icon} HERE: {here.label}{here.cleared?(here.isTrap?" (SPRUNG)":" (CLEARED)"):""}</div>
+                    <div style={{ fontSize:12, color: here.isTrap&&!here.cleared?"#e0a040":"#a3c79f", lineHeight:1.6 }}>{desc}</div>
+                    {preview && <div style={{ fontSize:11, color:"#e08020", marginTop:6 }}>⚠ {preview}</div>}
                     {!here.cleared && !here.descend && (
                       <div style={{ marginTop:8 }}>
                         <Btn onClick={()=>handleRoomEnter(here)} variant={here.isBoss?"attack":here.isTrap?"flee":"neutral"}>
@@ -3253,7 +3253,7 @@ function App() {
                   </div>
                 );
               })()}
-              <div style={{ color:"#3a3010", fontSize:7, marginBottom:14, lineHeight:1.8, textAlign:"center" }}>
+              <div style={{ color:"#9a7c44", fontSize:11, marginBottom:14, lineHeight:1.6, textAlign:"center" }}>
                 ▷ CLICK A LIT TILE TO MOVE · ?-TILES UNKNOWN · ENGAGE FROM CURRENT TILE
               </div>
               {unspentPoints>0 && (
@@ -3262,7 +3262,7 @@ function App() {
                 </div>
               )}
 
-              <div style={{ color:"#3a3010", fontSize:8, marginBottom:16, lineHeight:2.2 }}>
+              <div style={{ color:"#d9bd86", fontSize:12, marginBottom:16, lineHeight:1.9 }}>
                 HP {idlePlayer.hp}/{idlePlayer.maxHp} · ARM -{idlePlayer.armor} · ATK {dmgRange(idlePlayer.atkDmg,idlePlayer.dieIdx)} · SPD {idlePlayer.speed}<br />
                 HIT {idlePlayer.hitChance}% · DOD {idlePlayer.dodgeChance}% · CRT {idlePlayer.critChance}% · ☠ RES {idlePlayer.poisonResist}%<br />
                 {statLine(roomPlayer)}
@@ -3279,7 +3279,7 @@ function App() {
                 )}
                 {selectingItem && (
                   <>
-                    <div style={{ fontSize:8, color:"#c080f8", marginTop:4, marginBottom:6 }}>🎒 USE WHICH ITEM?</div>
+                    <div style={{ fontSize:11, color:"#c080f8", marginTop:4, marginBottom:6 }}>🎒 USE WHICH ITEM?</div>
                     <ItemButtons items={inventory} onUse={handleUseItem} onEquipOffhand={equipToOffhand} canEquipOffhand={canEquipToOffhand} inBattle={false} />
                     <Btn onClick={()=>setSelectingItem(false)} variant="flee">✕ CANCEL</Btn>
                   </>
@@ -3299,9 +3299,18 @@ function App() {
       </div>
 
      {equipOpen && (
-  <div style={{ position:"fixed", inset:0, background:"rgba(4,3,1,0.92)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+  // Overlay scrolls vertically (alignItems:"flex-start" + overflowY:"auto") so on phone-sized
+  // viewports the gear modal can't push CLOSE GEAR off-screen. A floating ✕ in the top-right is a
+  // belt-and-suspenders escape so the player can always dismiss regardless of scroll position.
+  <div style={{ position:"fixed", inset:0, background:"rgba(4,3,1,0.92)", zIndex:200, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:16, overflowY:"auto", WebkitOverflowScrolling:"touch" }}
        onClick={e=>{ if(e.target===e.currentTarget) setEquipOpen(false); }}>
-    <div style={{ width:"100%", maxWidth:580 }}>
+    <div style={{ width:"100%", maxWidth:580, position:"relative" }}>
+      <button onClick={()=>setEquipOpen(false)}
+              aria-label="Close gear"
+              style={{ position:"absolute", top:8, right:8, zIndex:1, width:38, height:38, borderRadius:"50%",
+                       background:"#2a1010", border:"2px solid #c04040", color:"#ffd0d0",
+                       fontSize:18, lineHeight:1, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                       boxShadow:"0 2px 0 #501010" }}>✕</button>
       <TileBox highlight style={{ padding:24 }}>
         <div style={{ fontSize:14, color:"#f8e000", textAlign:"center", marginBottom:20, letterSpacing:"0.08em" }}>
           🧍 CHARACTER GEAR
@@ -3357,7 +3366,7 @@ function App() {
                             <div style={{ display:"flex", alignItems:"baseline", flexWrap:"wrap", gap:8 }}>
                               <span style={{ fontSize:12, color:"#ffe7ad", fontWeight:600, letterSpacing:"0.03em" }}>{STAT_FULL[key]}</span>
                               <span style={{ fontSize:15, color:"#93e78d", fontWeight:600 }}>{ep[key]}</span>
-                              {perkName && <span style={{ fontSize:8.5, color:"#2a1d07", background:"linear-gradient(180deg,#ffd76a,#e0a82e)", borderRadius:8, padding:"2px 8px", fontWeight:600 }}>★ {perkName}</span>}
+                              {perkName && <span style={{ fontSize:11, color:"#2a1d07", background:"linear-gradient(180deg,#ffd76a,#e0a82e)", borderRadius:8, padding:"3px 9px", fontWeight:600 }}>★ {perkName}</span>}
                             </div>
                             <div style={{ fontSize:10, color:"#bda06f", marginTop:3, lineHeight:1.5 }}>{statEffectLine(key, ep[key], {level, hitDice:player.hitDice})}</div>
                           </div>
