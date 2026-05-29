@@ -133,13 +133,14 @@ Scope label: **Light polish** — no rewrite of the existing Baron arc. Existing
 
 | Plan | What | Status |
 |------|------|--------|
-| **Voice & tone fix** | The existing copy reads as AI-generated (see §9). Rework voice before adding new text — new beats inherit the new voice, not the old one. | Pending tone-direction pick |
-| **Town & supporting cast** | Give the Town a name; design 2–3 recurring NPCs. They are the source of *both* the shopkeeper and the heroes (see Run-handoff). | Not started |
-| **Hero creation backstory pick** | One-line pick at character creation (Why are you here? — revenge / paid / dragged into it / etc.) that gets called back to in 2–3 beats. | Not started |
-| **Run-handoff on death** | Player death implies the *next* run is a different villager from the Town who has picked up the flyer. The Town is the literal hero pool. This makes death narratively meaningful and naturally amplifies the Town & cast plan. | Not started — needs creation-screen support |
-| **Death = Baron gloat** | Replace flat `lose` panel with a Baron taunt; ties into Run-handoff ("Next!"). | Not started |
-| **Trap rooms = snarky Baron signs** | Each trap room shows a one-liner notice ("NOTICE TO TRESPASSERS — Mgmt") when entered. Traps feel like Baron pettiness, not random hazards. | Not started |
-| **Shop = shopkeeper** | Post-boss shop run by a named NPC (from Town & cast), 2–3 lines that rotate per floor. | Not started |
+| **Voice & tone fix** | The existing copy reads as AI-generated (see §9). Rework voice before adding new text — new beats inherit the new voice, not the old one. | **Done.** Direction locked (§9.1). Prologue + 4 intercom beats + ending + 3 Baron taunts + 7 lieutenant snarls all rewritten and live in index.html, verified in-browser. |
+| **Illiteracy variants** | The hero can be illiterate (WIT < 10 → `isIlliterate(p)`, gear labels render as `???`). Story beats must be illiteracy-safe by default, and the comedic asset of "paperwork villain vs. paperwork-immune hero" should be exploited where it lands. See §11. | **In progress.** Adding variants to prologue, Floor 5, Floor 20. |
+| **Town & supporting cast** | Marrowfield is named (§10). Still to design: 2–3 recurring NPCs. They are the source of *both* the shopkeeper and the heroes (see Run-handoff). | Town named; cast not started |
+| **Hero creation backstory pick** | One-line pick at character creation (Why are you here?) that gets called back to in 2–3 beats. **Literacy is part of the pick** (§11) — Schoolteacher reads, Blacksmith's apprentice doesn't — not just a stat-dump side effect. | Not started |
+| **Run-handoff on death** | Player death implies the *next* run is a different villager from Marrowfield who has picked up the flyer. The Town is the literal hero pool. Each villager can have any literacy (§11). | Not started — needs creation-screen support |
+| **Death = Baron gloat** | Replace flat `lose` panel with a Baron taunt; ties into Run-handoff ("Next!"). **Two gloats by literacy** (§11) — the illiterate gloat lands *worse* for him. | Not started |
+| **Trap rooms = snarky Baron signs** | Each trap room shows a one-liner notice ("NOTICE TO TRESPASSERS — Mgmt") when entered. Traps feel like Baron pettiness, not random hazards. **Literate hero gets `+5` to the ZIP shrug from reading the sign; illiterate hero sees `???` and gets no bonus** (§11). | Not started |
+| **Shop = shopkeeper** | Post-boss shop run by a named NPC (from Town & cast), 2–3 lines that rotate per floor. **Shopkeeper switches to gestures and drawings for illiterate customers** (§11). | Not started |
 | **Rest = campfire voice** | Make Camp shows a short reflective line per rest. Source TBD (narrator / inner voice / companion). | Not started |
 
 ### Parked for later
@@ -168,4 +169,164 @@ Scope label: **Light polish** — no rewrite of the existing Baron arc. Existing
 | Stage directions on default | `*crackle*` | Fine occasionally; reads as filler when reflexive. |
 
 **The plan.** Pick a voice direction (see question below), then rewrite the existing 5 beats + ending against it *before* writing any new material. New Town/cast/shop/rest/death copy follows the chosen direction from day one.
+
+### 9.1 Voice direction (locked): Pratchett-wry narrator
+
+The narrator is a person who has noticed things. They take their time. They are charmed by small wrongnesses and willing to tell you about them. They can be cozy and they can be cutting and they often are both inside the same sentence. Pratchett, Douglas Adams, John Finnemore.
+
+**Writing rules**
+
+| Do | Don't |
+|----|-------|
+| Long sentences that wander toward the joke, with the punchline buried mid-clause, not waiting at the end | Tidy "X. Y? Z." rhythms; tricolons ("landlord, schemer, wearer of a stupid hat") |
+| Use proper nouns. The Town has a name. The tavern has a name. The Baron's hat has a brand | "Your town", "the tavern" — abstraction is the enemy |
+| Notice small weird specifics (the flyer is badly nailed; a monster came up the laundry chute; the intercom has feedback) | Generic monster-fantasy filler |
+| Vary register inside a beat — cozy, cutting, briefly tender, mock-formal | One-note exasperation across every line |
+| Drop the joke sometimes; let a line just sit | A punchline at the end of every paragraph |
+| Use a short fragment as punctuation after a long sentence, for landing | Short fragments as default rhythm |
+| Earn each ALL-CAPS and each `*aside*`. Used sparingly they bite | EMPHASIS on every line; reflexive `*crackle*`-style stage directions |
+| **Show one concrete detail, let the reader infer the system.** The yellow NOTICE paper a monster was carrying. The carpet stain the Baron is openly furious about. The intercom feedback that gets worse with each beat. | Name the system in summary ("the monsters were eviction notices"; "the Baron is upset"). If you can replace a sentence with an object or a sound, do |
+
+**The Baron, inside this narrator**
+
+The Baron's voice is still corporate-landlord. The change is *texture*: he reaches for legalese and gets it slightly wrong, he addresses the hero with strained politeness that audibly fails, he has tics (he says "frankly" when he means the opposite, he refers to monsters as "amenities," he digresses mid-threat about carpeting). He is funniest when he is *trying* to be reasonable.
+
+### 9.2 Before / after samples
+
+**Narrator — prologue opening**
+
+> **Before** (current — [index.html:172](index.html:172)):
+>
+> "WANTED — 1 (one) HERO. Must like stairs. Monster problem. Pls hurry. — The Town"
+>
+> The monsters are pouring up out of the dungeon, and behind it all sits BARON VON BACON 🐷 — landlord, schemer, wearer of a truly stupid hat. His scheme: expand his dungeon UP into your town. The monsters? Eviction notices. With teeth.
+
+> **After** (proposed — pending Town name):
+>
+> Monsters had been coming up out of the dungeon for about a fortnight when somebody finally got around to writing a flyer. The flyer was, the tavernkeep noted, badly nailed; the monster problem had presumably been more pressing than the carpentry.
+>
+> The dungeon belonged to one Baron Von Bacon. He was a pig. He wore a hat that was one size too small and several decades out of fashion, and was, in the strictly technical sense, a landlord.
+>
+> Every monster that had so far been struck down was found to be carrying a small yellow slip of paper. One had been retrieved from the teeth of a goblin and pinned beside the flyer. It read:
+>
+> > **NOTICE TO TENANT** — *Removal scheduled forthwith. Vacate upper premises by sundown. Failure to comply will be enforced by Mgmt.*
+>
+> Nobody in Marrowfield had ever signed anything. This was, the tavernkeep gathered, the heart of the disagreement.
+
+The change from the earlier draft: the "tell" line ("The monsters were his eviction notices") is gone. We see one actual NOTICE pinned to the door. The reader works out the rest — that monsters deliver these things, that "Mgmt" is the Baron, that nobody signed a lease. The Town name fills the final beat, which is why the prologue rewrite is pending §10.
+
+---
+
+## 10. Marrowfield — the Town
+
+**Name:** Marrowfield. (Named for the marrow squashes grown there; the Watney family pumpkin patch is the unofficial town center.)
+
+**Vibe:** "Marrowfield has been quiet, on average, for the better part of two centuries, and the residents have always taken this to mean it would continue being quiet. The first sign that this might no longer be true was a goblin standing very visibly lost in the Watney family's pumpkin patch on a Tuesday morning."
+
+**Established Marrowfield specifics (canon, reuse these):**
+- The **Watney family pumpkin patch** is the running geographic anchor. It is the first place monsters appeared.
+- The **tavern** is where the flyer is nailed (and badly). It is also where the Baron's NOTICE has been pinned next to the flyer as evidence.
+- The **tavernkeep** is the de facto narrator-observer. They have already opened a tab in the hero's name.
+- Marrowfield has been **quiet for two centuries** — the monster problem is genuinely unprecedented. The residents are not equipped for this; that's the joke.
+
+Marrowfield is the source of:
+- the **villager pool** — per the run-handoff death system, each new run is a different Marrowfield resident picking up the flyer
+- the **shopkeeper** (post-boss shop NPC — concept TBD)
+- the **campfire voice** at rest (TBD)
+
+Cast roster, backstory pick options, and run-handoff lore all live here once drafted.
+
+---
+
+## 11. Illiteracy & the illiterate hero
+
+### The mechanic
+
+`isIlliterate(p)` ([index.html:670](index.html:670)) returns true when `abilityMod(p.intelligence) < 0` — i.e. WITS < 10. The default character is WITS 8 → illiterate. Illiterate heroes see every gear label and description as `???` ("TOO ARCANE TO READ"). A player can choose to be illiterate by dumping WIT at creation, and they can climb out of it by raising WIT to 10+ via level-ups.
+
+### The narrative principle
+
+Two rules:
+
+1. **Never make a story beat REQUIRE the hero to read.** Have a narrator or another character read for the audience, or have the hero hear/see something non-textual. Default writing should be illiteracy-safe — most beats need no variant at all.
+2. **When literacy IS the joke, make it land.** The Baron is a paperwork villain. The illiterate hero is paperwork-immune. The biggest threat in the dungeon is a man waving a clipboard at someone who cannot, in any meaningful sense, see a clipboard. Lean in.
+
+### Implementation pattern
+
+Beats that branch on literacy are **functions of the player**; beats that don't branch are either plain objects OR trivial functions (for uniformity, this pass makes all `STORY.beats[n]` functions).
+
+```js
+// Prologue — branches on the tail
+prologue: (heroName, p) => ({
+  title: "📜 …",
+  villain: false,
+  lines: [
+    ...sharedOpening,
+    ...(isIlliterate(p) ? altTail(heroName) : litTail(heroName)),
+  ],
+  button: "▶ ENTER THE DUNGEON",
+}),
+
+// Beat — branches inside the lines array
+5: (p) => ({
+  title: "📢 …", villain: true, button: "▶ KEEP DESCENDING",
+  lines: isIlliterate(p) ? [...altLines] : [...litLines],
+}),
+
+// Beat — no variant, trivial function for uniformity
+10: (p) => ({ title: "📢 …", villain: true, button: "▶ …", lines: [...] }),
+```
+
+Call sites:
+```js
+// finishCreation — pass the just-built draft (it has the stats)
+setStoryBeat({ ...STORY.prologue(heroName, draft), next: "idle" });
+
+// descendStairs — pass the current effective idlePlayer
+const beatFn = STORY.beats[nextFloor];
+if (beatFn) { setStoryBeat({ ...beatFn(idlePlayer), next: "idle" }); setPhase("story"); }
+```
+
+### Current variants (this pass)
+
+| Beat | Variant? | What changes |
+|------|----------|--------------|
+| Prologue | **Yes — tail** | Literate: "The tavernkeep has, with some foresight, opened a tab…" / Illiterate: "The tavernkeep, having gathered ${heroName} is not much of a reader, read the flyer aloud twice and the NOTICE TO TENANT once, with finger-pointing…" |
+| Floor 5 | **Yes — inline clause** | Baron's "per Schedule C, subsection iv" routine breaks mid-sentence with "…and which I am now realizing you also could not READ if you did have, given the look on your face…" |
+| Floor 10 | No — Baron lists amenities; no reading required | — |
+| Floor 15 | No — Baron's barbed-wire complaint; no reading | — |
+| Floor 20 | **Yes — tail** | Literate: "Let's discuss your security deposit." / Illiterate: "Let's discuss your security depo— oh. You don't even know what that IS, do you. Fine. Let's just FIGHT." |
+| Ending | No — narrator describes the tavernkeep writing PAID; hero is far below | — |
+| Baron taunts | No — short combat-log lines; no reading | — |
+| Lieutenant snarls | No — short combat-log lines; no reading | — |
+
+### Planned hooks for illiteracy (not in this pass)
+
+These are noted in §8 alongside their parent features:
+
+- **Trap room signs:** literate hero gets `+5` to ZIP shrug from reading the warning; illiterate hero sees `???` and gets no bonus. Optional: alternate detection path via pictogram (a wobbly drawing of a man falling through a floor).
+- **Shopkeeper:** when serving an illiterate customer, switches to gestures and drawings — points at items, mimes their use, rotates 1–2 lines like "*(the shopkeeper draws a small picture of an apple on the counter and points at the apple, then at you)*."
+- **Death gloat:** two Baron gloats by literacy. The illiterate gloat is *condescending* — and lands worse for him, because the hero who couldn't read his eviction notice has just outlasted the one who wrote it.
+- **Backstory pick:** literacy is part of the pick, not just a stat-dump side effect. Picks should make the player choose their relationship to text deliberately.
+
+**Baron — Floor 5 intercom**
+
+> **Before** (current — [index.html:189](index.html:189)):
+>
+> *crackle* "Ahem. Welcome to floor FIVE.
+> Per section 12 of the lease you do NOT have,
+> kindly EXIT the premises. Upward. Immediately.
+> ...You're not leaving, are you. Fine. FINE."
+
+> **After** (proposed):
+>
+> *(the intercom takes a moment to clear its throat)*
+>
+> "Yes. Hello. This is the Management. Welcome to floor five, which — per Schedule C, subsection iv of your lease — you don't actually have a lease, do you, you simply *don't* — kindly turn around and walk back upstairs. Mind the railings on your way out. They bite now."
+>
+> *(a pause. The intercom does not switch off.)*
+>
+> "...you're not leaving. Right. Fine."
+
+The Baron's after-voice keeps his existing energy (landlord-pedantic, runs out of patience mid-line) but adds: a wandering sentence with the joke buried mid-clause, a digression about the railings that does the work the old `*crackle*` was meant to, and a pause that lands without an exclamation point.
 

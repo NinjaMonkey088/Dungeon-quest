@@ -124,28 +124,37 @@ const WIS_PERKS = STAT_PERKS.wisdom;
 //   saveStat: enemy's ability used to roll the save (default = caster's stat)
 //   onSave: "avoid" (default for attacks) | "half" | "status" | "both"
 //   effect: status proc on successful hit ("burn"/"poison"/"bleed")
-// Save math: DC = 8 + abilityMod(player[stat]) + floor(playerLevel / 2). Enemy rolls d20 +
-// abilityMod(enemy.attrs[saveStat]). saveTotal > DC = saved.
+// Save math (player caster): DC = 8 + abilityMod(player[spell.stat]) + floor(playerLevel/2). Enemy
+// rolls d20 + abilityMod(enemy.attrs[saveStat]). saveTotal > DC = saved.
 const PLAYER_SPELLS = [
-  // WITS tricks
-  { id:"zap_zap",   name:"ZAP-ZAP",     emoji:"✨", stat:"intelligence", req:12, cost:1,
+  // 🤓 WHIZ-BANG (WITS = intelligence) — damage specialty
+  { id:"zap_zap",     name:"ZAP-ZAP",     emoji:"✨", stat:"intelligence", req:12, cost:1,
     desc:"1D4 ZAP · ALWAYS HITS · IGNORES ARMOR",
     type:"attack", die:{count:1,size:4}, autoHit:true, ignoreArmor:true },
-  { id:"hotfoot",   name:"HOTFOOT",     emoji:"🔥", stat:"intelligence", req:14, cost:2,
+  { id:"hotfoot",     name:"HOTFOOT",     emoji:"🔥", stat:"intelligence", req:14, cost:2,
     desc:"1D10 + WIT · BURN · ZIP SHRUG FOR HALF · IGNORES ARMOR",
     type:"attack", die:{count:1,size:10}, statBonus:"intelligence", saveStat:"dexterity", onSave:"half", effect:"burn", ignoreArmor:true },
-  // SAVVY charms
+  // 🌿 COZY (SAVVY = wisdom) — heal & defense specialty
+  { id:"band_aid",    name:"BAND-AID",    emoji:"🩹", stat:"wisdom", req:10, cost:1,
+    desc:"HEAL 1D4 + SAV · QUICK PATCH",
+    type:"heal", die:{count:1,size:4}, statBonus:"wisdom" },
   { id:"boo_boo_fix", name:"BOO-BOO FIX", emoji:"✚", stat:"wisdom", req:12, cost:1,
     desc:"HEAL 1D8 + SAV",
     type:"heal", die:{count:1,size:8}, statBonus:"wisdom" },
   { id:"there_there", name:"THERE-THERE", emoji:"✦", stat:"wisdom", req:14, cost:2,
     desc:"HEAL 2D4 + SAV · CURES 1 STATUS",
     type:"heal", die:{count:2,size:4}, statBonus:"wisdom", cureOne:true },
-  // CHARM taunts
-  { id:"sick_burn", name:"SICK BURN",   emoji:"💢", stat:"charisma", req:12, cost:1,
+  { id:"check_up",    name:"CHECK-UP",    emoji:"🩺", stat:"wisdom", req:14, cost:2,
+    desc:"CURE ALL STATUS",
+    type:"heal", die:{count:0,size:0}, statBonus:"wisdom", cureAll:true },
+  { id:"bubble",      name:"BUBBLE",      emoji:"🛡️", stat:"wisdom", req:14, cost:2,
+    desc:"+1D4 + SAV TEMP HP · 1 BATTLE",
+    type:"heal", die:{count:1,size:4}, statBonus:"wisdom", tempHp:true },
+  // 😏 SASS (CHARM = charisma) — control specialty
+  { id:"sick_burn",   name:"SICK BURN",   emoji:"💢", stat:"charisma", req:12, cost:1,
     desc:"1D4 + CHM · SAV SHRUG · IGNORES ARMOR",
     type:"attack", die:{count:1,size:4}, statBonus:"charisma", saveStat:"wisdom", onSave:"avoid", ignoreArmor:true },
-  { id:"bat_eyes",  name:"BAT EYES",    emoji:"💖", stat:"charisma", req:14, cost:2,
+  { id:"bat_eyes",    name:"BAT EYES",    emoji:"💖", stat:"charisma", req:14, cost:2,
     desc:"SAV SHRUG OR SKIP TURN(S) = SPELL LV",
     type:"control", saveStat:"wisdom", onSave:"avoid", stunTarget:true },
 ];
@@ -165,79 +174,179 @@ const PERK_POOL = [
 // Narrative beats shown in the `story` phase. The villain (🐷 boss) heckles via the
 // "dungeon intercom" at floor milestones; he flees one floor deeper after every loss
 // until his last stand on floor 20. Boss intro lines live in BARON_TAUNTS / LIEUTENANT_SNARLS.
+// All `STORY.beats[n]` and `STORY.prologue` are functions of the player so they can branch
+// on `isIlliterate(p)` (defined in Helpers, ~line 670). See STORY.md §11 for the principle —
+// "paperwork villain vs. paperwork-immune hero." Branching beats: prologue tail, Floor 5
+// (inline clause), Floor 20 (tail). Floors 10/15 are trivial functions for uniform call shape.
 const STORY = {
-  prologue: (heroName) => ({
+  prologue: (heroName, p) => ({
     title: "📜 A FLYER ON THE TAVERN DOOR",
     villain: false,
     lines: [
-      "\"WANTED — 1 (one) HERO. Must like stairs.",
-      "  Monster problem. Pls hurry. — The Town\"",
+      "Monsters started coming up out of the dungeon",
+      "under Marrowfield about a fortnight ago.",
+      "The flyer on the tavern door is, the tavernkeep",
+      "notes, badly nailed:",
       "",
-      "The monsters are pouring up out of the dungeon,",
-      "and behind it all sits BARON VON BACON 🐷 —",
-      "landlord, schemer, wearer of a truly stupid hat.",
+      "  \"WANTED — 1 (one) HERO. Must like stairs.",
+      "   Monster problem. Pls hurry. — The Town\"",
       "",
-      "His scheme: expand his dungeon UP into your town.",
-      "The monsters? Eviction notices. With teeth.",
+      "Pinned beside it is a small yellow paper",
+      "retrieved from the teeth of a goblin. It reads:",
       "",
-      "20 floors stand between you and the Baron's office.",
-      `No takebacks now, ${heroName}. Down you go.`,
+      "  NOTICE TO TENANT — Vacate upper premises",
+      "  forthwith. Failure to comply enforced by Mgmt.",
+      "",
+      "Mgmt, the residents have gathered, is one",
+      "BARON VON BACON 🐷: pig, landlord, wearer",
+      "of a hat one size too small.",
+      "Nobody in Marrowfield has ever signed anything.",
+      "",
+      ...(isIlliterate(p) ? [
+        `The tavernkeep, having gathered ${heroName} is`,
+        "not much of a reader, read the flyer aloud twice",
+        "and the NOTICE TO TENANT once, slowly, with",
+        `finger-pointing. A tab has been opened`,
+        `in ${heroName}'s name. Down you go.`,
+      ] : [
+        "The tavernkeep has, with some foresight,",
+        `opened a tab in ${heroName}'s name.`,
+        "Down you go.",
+      ]),
     ],
     button: "▶ ENTER THE DUNGEON",
   }),
   beats: {
-    5:  { title:"📢 DUNGEON INTERCOM — FLOOR 5", villain:true, button:"▶ KEEP DESCENDING", lines:[
-            "*crackle* \"Ahem. Welcome to floor FIVE.",
-            "Per section 12 of the lease you do NOT have,",
-            "kindly EXIT the premises. Upward. Immediately.",
-            "...You're not leaving, are you. Fine. FINE.\"",
-          ] },
-    10: { title:"📢 DUNGEON INTERCOM — FLOOR 10", villain:true, button:"▶ KEEP DESCENDING", lines:[
-            "\"Floor TEN?! You were meant to be a tasteful",
-            "smear by now. No matter — I've upgraded the",
-            "amenities. (The amenities are monsters.)",
-            "Enjoy your stay. You won't.\"",
-          ] },
-    15: { title:"📢 DUNGEON INTERCOM — FLOOR 15", villain:true, button:"▶ KEEP DESCENDING", lines:[
-            "\"Every time you 'defeat' me I just take the",
-            "express stairs down, you realize. Very tiring.",
-            "Very RUDE. I'm running low on floors AND patience.",
-            "Five more and you meet me in my corner office.\"",
-          ] },
-    20: { title:"📢 FLOOR 20 — THE CORNER OFFICE", villain:true, button:"▶ FACE THE BARON", lines:[
-            "\"This is it: the penthouse of the basement.",
-            "Top floor of the bottom. You get it.",
-            "Come IN, hero. Mind the carpet. Let's discuss",
-            "your security deposit... and your DOOM.\"",
-          ] },
+    5: (p) => ({
+      title:"📢 DUNGEON INTERCOM — FLOOR 5", villain:true, button:"▶ KEEP DESCENDING",
+      lines: isIlliterate(p) ? [
+        "*(the intercom clears its throat)*",
+        "",
+        "\"Yes. Hello. This is the Management.",
+        "Welcome to floor five, which — per Schedule C,",
+        "subsection iv of your lease, which you don't",
+        "actually have, do you, and which I am now",
+        "realizing you also could not READ if you did",
+        "have, given the look on your face — kindly walk",
+        "back upstairs. Mind the railings. They bite now.\"",
+        "",
+        "\"...you're not leaving. Fine.\"",
+      ] : [
+        "*(the intercom clears its throat)*",
+        "",
+        "\"Yes. Hello. This is the Management.",
+        "Welcome to floor five, which — per Schedule C,",
+        "subsection iv of your lease, which you don't",
+        "actually have, do you — kindly walk back",
+        "upstairs. Mind the railings. They bite now.\"",
+        "",
+        "\"...you're not leaving. Fine.\"",
+      ],
+    }),
+    10: (p) => ({
+      title:"📢 DUNGEON INTERCOM — FLOOR 10", villain:true, button:"▶ KEEP DESCENDING",
+      lines: [
+        "*(loud intercom feedback)* \"...sorry.\"",
+        "",
+        "\"Floor TEN. You were meant to be a small",
+        "and respectful smear on a lower landing",
+        "by now. Frankly, I am hurt. I am,",
+        "professionally speaking, hurt.\"",
+        "",
+        "\"Please enjoy the recently upgraded amenities:",
+        "the dark wizard, the witch, the fairy.",
+        "Two more wizards, actually. We're really",
+        "leaning into wizards.\"",
+      ],
+    }),
+    15: (p) => ({
+      title:"📢 DUNGEON INTERCOM — FLOOR 15", villain:true, button:"▶ KEEP DESCENDING",
+      lines: [
+        "*(the intercom is breathing)*",
+        "",
+        "\"You realize every time you so-called",
+        "'defeat' me I am taking the express stairs",
+        "down. Two at a time. While you meander",
+        "up here.\"",
+        "",
+        "\"It is exhausting. I have been ABSOLUTELY",
+        "clear with my lieutenants about the express",
+        "stairs — you may have noticed they're now",
+        "full of barbed wire, don't blame me,",
+        "blame your insistence.\"",
+        "",
+        "\"Five more floors. Then we meet.\"",
+      ],
+    }),
+    20: (p) => ({
+      title:"📢 FLOOR 20 — THE CORNER OFFICE", villain:true, button:"▶ FACE THE BARON",
+      lines: isIlliterate(p) ? [
+        "*(no intercom this time. He's right there.)*",
+        "",
+        "\"Come in. Come IN. Don't loiter, that's",
+        "how stains happen, and frankly you would",
+        "not believe what a stain on this carpet",
+        "costs.\"",
+        "",
+        "\"My office. Bottom floor.",
+        "Top floor of the bottom. You get it.\"",
+        "",
+        "\"Sit down. Don't sit there, that's antique.",
+        "Let's discuss your security depo— oh.",
+        "You don't even know what that IS, do you.",
+        "Fine. Let's just FIGHT.\"",
+      ] : [
+        "*(no intercom this time. He's right there.)*",
+        "",
+        "\"Come in. Come IN. Don't loiter, that's",
+        "how stains happen, and frankly you would",
+        "not believe what a stain on this carpet",
+        "costs.\"",
+        "",
+        "\"My office. Bottom floor.",
+        "Top floor of the bottom. You get it.\"",
+        "",
+        "\"Sit down. Don't sit there, that's antique.",
+        "Let's discuss your security deposit.\"",
+      ],
+    }),
   },
   ending: [
-    "The stupid hat tumbles off. The Monster Maker",
-    "sputters, coughs, and quits. The dungeon stops growing.",
+    "The hat falls off. It is, on closer inspection,",
+    "not even a real top hat; it is a paper",
+    "imitation with a brim of folded cardboard,",
+    "which would explain a number of things",
+    "if anyone asked.",
     "",
-    "The ceiling holds. Your town stays a town —",
-    "and decidedly NOT the Baron's newest basement.",
+    "Nobody asks.",
     "",
-    "Far above, a tavern erupts in cheers",
-    "(and quietly opens a tab in your name).",
+    "Somewhere in the Baron's office, a machine",
+    "that has been wheezing throughout the fight",
+    "now wheezes itself quiet.",
+    "The dungeon, finally, stops growing upward.",
+    "",
+    "Far above, in Marrowfield, the tavernkeep",
+    "walks to the ledger, finds the tab opened",
+    "in your name, and writes PAID across it",
+    "in large friendly letters.",
   ],
 };
 
 // Baron (🐷) recurring boss taunts — first meeting / battered rematch / last stand.
 const BARON_TAUNTS = {
-  first: "🐷 \"Ah — the hero from the flyer. EVICTION TIME!\"",
-  elder: "🐷 \"You AGAIN? Ugh, fine. I've been doing squats.\"",
-  final: "🐷 \"My LAST floor. Make this quick, I have a 4 o'clock.\"",
+  first: "🐷 \"Ah. The applicant. This will require some assertiveness on my part.\"",
+  elder: "🐷 \"You again. Look — I've been doing the stairs as cardio. It is humbling.\"",
+  final: "🐷 \"Final floor. I have a four-thirty. Let's not drag this out.\"",
 };
 // Short lieutenant snarls — the Baron's hired goons, keyed by boss name.
 const LIEUTENANT_SNARLS = {
-  "KING Boar":         "🐗 \"BARON VON BACON said I could keep your boots!\"",
-  "Zombie LORD":       "🧟 \"Tenant... of the month... braaains...\"",
-  "ARCH Dark Wizard":  "🧙 \"The Baron's rent is due — I collect in FIREBALLS.\"",
-  "IRON Cursed Sword": "🗡️ \"No one evicts the Baron's floor. Not today.\"",
-  "Dragon":            "🐲 \"The Baron promised me the top three floors. MOVE.\"",
-  "Giant Cactus":      "🌵 \"I'm the Baron's landscaping. Prickly, isn't it?\"",
-  "PHANTOM Lord":      "👻 \"The Baron haunts the lease. I just haunt.\"",
+  "KING Boar":         "🐗 \"The Baron pays me in boots. I get yours first.\"",
+  "Zombie LORD":       "🧟 \"Tenant... of the month... three years running... mostly by attrition...\"",
+  "ARCH Dark Wizard":  "🧙 \"Rent is due. I take it in cinders.\"",
+  "IRON Cursed Sword": "🗡️ \"The Baron's floor stays the Baron's floor. Mind the carpet.\"",
+  "Dragon":            "🐲 \"I was promised these three floors. You are on one of them.\"",
+  "Giant Cactus":      "🌵 \"I'm the Baron's landscaping. Try not to lean on me.\"",
+  "PHANTOM Lord":      "👻 \"The lease is haunted. I came with it.\"",
 };
 
 // One-time contextual tutorial hints (shown via the floating hint overlay, then
@@ -272,7 +381,7 @@ const HINTS = {
 // `spell` field on an enemy makes them a caster. Shape:
 //   { name, ability: "intelligence"|"wisdom"|"charisma", mod, damage, effect?: "poison"|"burn"|"bleed"|"stun", onSave: "avoid"|"half"|"status"|"both" }
 // Combined with `spellChance` (default 100 if absent), the enemy rolls each turn to cast or melee.
-// Saving math: DC = 8 + spell.mod + floor(waveNumber/2). Player rolls d20 + their own matching ability mod.
+// Saving math (enemy caster): DC = 8 + spell.mod + floor(waveNumber/2). Player rolls d20 + their own matching ability mod.
 // roll > DC = saved; roll ≤ DC = full hit. The `onSave` field decides what "saved" means for that spell.
 // Each enemy carries `attrs` (ability scores) used to roll saves against player spells. Scores
 // follow the player convention — abilityMod = floor((score-10)/2). Hidden in combat unless devMode
@@ -288,15 +397,15 @@ const ENEMY_DEFS = {
   "Giant Lizard": { emoji:"🦎", niche:"EVASIVE",      maxHp:5,  attack:2, armor:0, hitChance:65, dodgeChance:40, speed:14, xp:2, goldMin:2, goldMax:4,
                   attrs:{ strength:10, dexterity:16, constitution:10, wisdom:10, charisma:8,  intelligence:4 } },
   "Dark Wizard":  { emoji:"🧙", niche:"GLASS CANNON", maxHp:3,  attack:5, armor:0, hitChance:80, dodgeChance:0,  speed:11, xp:2, goldMin:3, goldMax:5,
-                    spellChance:100, spell:{ name:"FIREBOLT", ability:"intelligence", mod:3, damage:4, effect:"burn", onSave:"avoid" },
+                    spellChance:100, spell:{ name:"FIREBOLT", ability:"intelligence", saveStat:"dexterity", mod:3, damage:4, effect:"burn", onSave:"avoid" },
                     attrs:{ strength:6,  dexterity:10, constitution:6,  wisdom:12, charisma:10, intelligence:16 } },
   Fairy:          { emoji:"🦋", niche:"ARMORED",      maxHp:7,  attack:2, armor:2, hitChance:55, dodgeChance:0,  speed:12, xp:2, goldMin:3, goldMax:5,
-                    spellChance:50,  spell:{ name:"FAY CHARM", ability:"charisma", mod:2, damage:2, onSave:"avoid" },
+                    spellChance:50,  spell:{ name:"FAY CHARM", ability:"charisma", saveStat:"wisdom", mod:2, damage:2, onSave:"avoid" },
                     attrs:{ strength:6,  dexterity:14, constitution:12, wisdom:12, charisma:14, intelligence:12 } },
   "Cursed Sword": { emoji:"🗡️", niche:"HEAVY ARMOR",  maxHp:8,  attack:3, armor:4, hitChance:55, dodgeChance:0,  speed:7,  xp:3, goldMin:4, goldMax:6,
                   attrs:{ strength:14, dexterity:8,  constitution:14, wisdom:8,  charisma:6,  intelligence:6 } },
   Ghost:        { emoji:"🌪️", niche:"SWIFT",        maxHp:4,  attack:3, armor:0, hitChance:70, dodgeChance:40, speed:14, xp:3, goldMin:3, goldMax:6,
-                  spellChance:40,  spell:{ name:"SPECTRAL TOUCH", ability:"wisdom", mod:2, damage:3, onSave:"avoid" },
+                  spellChance:40,  spell:{ name:"SPECTRAL TOUCH", ability:"wisdom", saveStat:"constitution", mod:2, damage:3, onSave:"avoid" },
                   attrs:{ strength:6,  dexterity:16, constitution:6,  wisdom:14, charisma:12, intelligence:10 } },
   Skeleton:     { emoji:"💀", niche:"DEADEYE",      maxHp:6,  attack:3, armor:1, hitChance:95, dodgeChance:0,  speed:10, xp:3, goldMin:3, goldMax:6,
                   attrs:{ strength:12, dexterity:10, constitution:10, wisdom:6,  charisma:4,  intelligence:6 } },
@@ -306,15 +415,15 @@ const ENEMY_DEFS = {
   Berserker:    { emoji:"🪓", niche:"BERSERKER",    maxHp:9,  attack:2, armor:0, hitChance:60, dodgeChance:0,  speed:9,  xp:3, goldMin:3, goldMax:6, enragesWhenLow:true,
                   attrs:{ strength:16, dexterity:10, constitution:14, wisdom:6,  charisma:8,  intelligence:6 } },
   Phantom:      { emoji:"🌑", niche:"CURSED",       maxHp:6,  attack:3, armor:1, hitChance:70, dodgeChance:0,  speed:11, xp:2, goldMin:2, goldMax:5, bleedsOnCrit:true,
-                  spellChance:50,  spell:{ name:"DREAD CURSE", ability:"charisma", mod:3, damage:3, effect:"bleed", onSave:"both" },
+                  spellChance:50,  spell:{ name:"DREAD CURSE", ability:"charisma", saveStat:"wisdom", mod:3, damage:3, effect:"bleed", onSave:"both" },
                   attrs:{ strength:8,  dexterity:12, constitution:10, wisdom:14, charisma:14, intelligence:12 } },
   Imp:          { emoji:"🦇", niche:"FIRE BAT",     maxHp:3,  attack:2, armor:0, hitChance:75, dodgeChance:15, speed:15, xp:2, goldMin:2, goldMax:4, burnsOnHit:true,
-                  spellChance:50,  spell:{ name:"HELLFIRE", ability:"charisma", mod:2, damage:3, effect:"burn", onSave:"both" },
+                  spellChance:50,  spell:{ name:"HELLFIRE", ability:"charisma", saveStat:"dexterity", mod:2, damage:3, effect:"burn", onSave:"both" },
                   attrs:{ strength:8,  dexterity:16, constitution:8,  wisdom:10, charisma:14, intelligence:12 } },
   Ogre:         { emoji:"🫧", niche:"STUNNING",     maxHp:5,  attack:2, armor:1, hitChance:70, dodgeChance:0,  speed:7,  xp:2, goldMin:3, goldMax:5, stunsOnHit:true,
                   attrs:{ strength:16, dexterity:8,  constitution:14, wisdom:6,  charisma:6,  intelligence:4 } },
   Witch:        { emoji:"🧙‍♀️", niche:"HEALER",     maxHp:6,  attack:1, armor:0, hitChance:60, dodgeChance:0,  speed:9,  xp:3, goldMin:3, goldMax:5, healsAllies:true,
-                  spellChance:60,  spell:{ name:"HEX", ability:"wisdom", mod:3, damage:1, effect:"poison", onSave:"status" },
+                  spellChance:60,  spell:{ name:"HEX", ability:"wisdom", saveStat:"constitution", mod:3, damage:1, effect:"poison", onSave:"status" },
                   attrs:{ strength:6,  dexterity:10, constitution:8,  wisdom:16, charisma:14, intelligence:12 } },
 };
 
@@ -333,7 +442,7 @@ const WAVE_BOSSES = [
   { name:"Zombie LORD",       emoji:"🧟", maxHp:20, attack:2,  armor:1, hitChance:100, dodgeChance:0,  speed:5,  xp:4, goldMin:4, goldMax:8,  isBoss:true,
     attrs:{ strength:14, dexterity:6,  constitution:18, wisdom:6,  charisma:8,  intelligence:6 } },
   { name:"ARCH Dark Wizard",  emoji:"🧙", maxHp:7,  attack:7,  armor:0, hitChance:100, dodgeChance:40, speed:12, xp:4, goldMin:5, goldMax:9,  isBoss:true,
-    spellChance:65, spell:{ name:"FIRESTORM", ability:"intelligence", mod:5, damage:6, effect:"burn", onSave:"half" },
+    spellChance:65, spell:{ name:"FIRESTORM", ability:"intelligence", saveStat:"dexterity", mod:5, damage:6, effect:"burn", onSave:"half" },
     attrs:{ strength:8,  dexterity:14, constitution:8,  wisdom:14, charisma:12, intelligence:18 } },
   { name:"IRON Cursed Sword", emoji:"🗡️", maxHp:15, attack:5,  armor:5, hitChance:100, dodgeChance:20, speed:8,  xp:5, goldMin:6, goldMax:11, isBoss:true,
     attrs:{ strength:18, dexterity:10, constitution:16, wisdom:8,  charisma:8,  intelligence:8 } },
@@ -341,16 +450,16 @@ const WAVE_BOSSES = [
 
 const BOSS_DEFS = [
   { name:"Dragon",        emoji:"🐲", maxHp:20, attack:7,  armor:5, hitChance:100, dodgeChance:15, speed:11, xp:5,  goldMin:8,  goldMax:12, isBoss:true,
-    spellChance:40, spell:{ name:"DRAGON BREATH", ability:"charisma", mod:4, damage:5, effect:"burn", onSave:"half" },
+    spellChance:40, spell:{ name:"DRAGON BREATH", ability:"charisma", saveStat:"dexterity", mod:4, damage:5, effect:"burn", onSave:"half" },
     attrs:{ strength:18, dexterity:12, constitution:18, wisdom:14, charisma:16, intelligence:14 } },
   { name:"Giant Cactus",  emoji:"🌵", maxHp:25, attack:8,  armor:4, hitChance:100, dodgeChance:15, speed:6,  xp:6,  goldMin:10, goldMax:16, isBoss:true, poisonOnHit:true,
-    spellChance:35, spell:{ name:"NEEDLE VOLLEY", ability:"wisdom", mod:4, damage:4, effect:"poison", onSave:"both" },
+    spellChance:35, spell:{ name:"NEEDLE VOLLEY", ability:"wisdom", saveStat:"dexterity", mod:4, damage:4, effect:"poison", onSave:"both" },
     attrs:{ strength:14, dexterity:8,  constitution:20, wisdom:14, charisma:8,  intelligence:8 } },
   { name:"PHANTOM Lord",  emoji:"👻", maxHp:30, attack:9,  armor:0, hitChance:100, dodgeChance:60, speed:14, xp:7,  goldMin:12, goldMax:18, isBoss:true, immuneToCrit:true,
-    spellChance:60, spell:{ name:"SOUL SCREAM", ability:"charisma", mod:5, damage:5, effect:"bleed", onSave:"both" },
+    spellChance:60, spell:{ name:"SOUL SCREAM", ability:"charisma", saveStat:"charisma", mod:5, damage:5, effect:"bleed", onSave:"both" },
     attrs:{ strength:10, dexterity:18, constitution:12, wisdom:16, charisma:18, intelligence:14 } },
   { name:"BARON VON BACON", emoji:"🐷", maxHp:40, attack:12, armor:8, hitChance:100, dodgeChance:30, speed:12, xp:10, goldMin:15, goldMax:25, isBoss:true, poisonOnHit:true, immuneToCrit:true,
-    spellChance:50, spell:{ name:"ABYSSAL BOLT", ability:"intelligence", mod:6, damage:7, effect:"poison", onSave:"half" },
+    spellChance:50, spell:{ name:"ABYSSAL BOLT", ability:"intelligence", saveStat:"dexterity", mod:6, damage:7, effect:"poison", onSave:"half" },
     attrs:{ strength:18, dexterity:14, constitution:18, wisdom:16, charisma:16, intelligence:20 } },
 ];
 
@@ -672,20 +781,53 @@ function pickShopEquipment(avail, n) {
   return out;
 }
 
-// Fight room types — any can spawn 1–2 foes (35% chance of 2); big rooms ALWAYS have 2 (30% chance
-// of 3). Enemy-count logic lives in rollEnemyCount / makeFloorMap.
+// Fight room types — non-big rooms can spawn 1–2 foes (35% chance of 2); big rooms are always a
+// crowd and scale with floor depth. Count logic lives in rollEnemyCount / bigRoomCountRange.
 const ROOM_TYPES = [
   { id:"small",  icon:"▦", label:"SMALL ROOM", desc:"A TIGHT FIGHT · MAY SWARM" },
   { id:"big",    icon:"▣", label:"BIG ROOM",   desc:"MORE GOLD · 2+ FOES", enemyMod:e=>({...e,goldMin:e.goldMin+1,goldMax:e.goldMax+3}), maybeDouble:true },
   { id:"bridge", icon:"═", label:"BRIDGE",     desc:"SWIFT FOE · GOOD GOLD · MAY SWARM", enemyMod:e=>({...e,dodgeChance:(e.dodgeChance||0)+15,goldMax:e.goldMax+2}) },
   { id:"shrine", icon:"✚", label:"OLD SHRINE", desc:"WEAKER FOE · SMALL GOLD · MAY SWARM", enemyMod:e=>({...e,hitChance:Math.max(30,e.hitChance-10),goldMin:Math.max(1,e.goldMin-1)}) },
 ];
-// Trap rooms: no combat. Walking in forces a ZIP (dexterity) shrug-off vs a floor-scaled target;
-// failing deals damage (sometimes + a status). Spotting the trap first (the awareness/WIS roll) adds
-// +5 to the shrug-off. See triggerTrap.
-const TRAP_ROOM = { id:"trap", icon:"⚠", label:"TRAP ROOM", desc:"SOMETHING'S RIGGED HERE", isTrap:true };
-// How many foes a fight room spawns. Big rooms are always a crowd; others may swarm.
-const rollEnemyCount = (type) => type.maybeDouble ? (pct(30) ? 3 : 2) : (pct(35) ? 2 : 1);
+// Trap rooms: disguised on the map as a random non-big fight room (small/bridge/shrine), with fake
+// enemies for full deception. Walking in forces a ZIP (dexterity) shrug-off vs a floor-scaled
+// target; failing fires the trap's rolled sub-effect(s). Spotting the trap first (the trapAware/WIS
+// roll) reveals the disguise on the tile + HERE strip AND grants +5 to the shrug. See triggerTrap.
+const TRAP_ROOM = { id:"trap", isTrap:true };
+// Trap sub-effects. Each trap rolls a primary uniformly; 25% chance to also roll a different
+// secondary. "status" expands into one of the three DOTs (poison/burn/bleed). Spike scales hardest
+// with floor; status chip damage and mimic gold-theft scale gently; ambush scales via enemy tier.
+const TRAP_EFFECTS       = ["spike","status","mimic","ambush"];
+const TRAP_STATUS_KINDS  = ["poison","burn","bleed"];
+const TRAP_EFFECT_LABEL  = { spike:"SPIKES", poison:"POISON", burn:"FIRE", bleed:"SNARE", mimic:"MIMIC", ambush:"AMBUSH" };
+// Big-room enemy count ramps with depth, biggest swarms saved for the final stretch. Uniform roll
+// in [min, max] inclusive (so a 2–4 floor is even odds between 2, 3, 4).
+const bigRoomCountRange = (floorNum) => {
+  if (floorNum <= 1)  return [2, 2];
+  if (floorNum <= 4)  return [2, 3];
+  if (floorNum <= 7)  return [2, 4];
+  if (floorNum <= 10) return [3, 4];
+  if (floorNum <= 13) return [3, 5];
+  if (floorNum <= 16) return [4, 5];
+  if (floorNum <= 19) return [4, 6];
+  return                     [5, 6]; // f20 — the Baron's last stand
+};
+// How many foes a fight room spawns. Big rooms scale with depth; others may swarm (1 or 2).
+const rollEnemyCount = (type, floorNum) => {
+  if (type.maybeDouble) {
+    const [min, max] = bigRoomCountRange(floorNum);
+    return min + Math.floor(Math.random() * (max - min + 1));
+  }
+  return pct(35) ? 2 : 1;
+};
+// How many minions accompany the boss. Solo on early floors; the Baron's deepest stretches bring
+// a posse. At most one healer (Witch) in the mix — same cap as regular rooms.
+const bossMinionCount = (floorNum) => {
+  if (floorNum <= 9)  return 0;
+  if (floorNum <= 13) return 1;
+  if (floorNum <= 17) return 2;
+  return 3; // f18–20
+};
 // Chance a non-entrance, non-boss room is a trap instead of a fight.
 const TRAP_ROOM_CHANCE = 20;
 
@@ -720,26 +862,62 @@ function makeFloorMap(floorNum, level, p, revealAll=false) {
   const known = () => revealAll || pct(35+awareness);
   const positions = floorPositions(floorNum);
   const size = positions.length;
+  // Boss + minion lineup. Minions are pulled from WAVES via pickEnemy at the current floor's tier,
+  // with the same one-Witch-per-room cap as fight rooms (a Witch healing the boss is a real "kill
+  // the healer first" decision, but two stalls into infinity).
+  const minionCount = bossMinionCount(floorNum);
+  const bossMinions = [];
+  for (let i = 0; i < minionCount; i++) {
+    const hasHealer = bossMinions.some(e => e.healsAllies);
+    bossMinions.push(pickEnemy(level, { allowHealer: !hasHealer }));
+  }
   const bossRoom = {
     id:'boss', icon:'▰', label:'BOSS DOOR', desc:'THE FLOOR GUARDIAN WAITS',
-    isBoss:true, enemies:[pickBoss(floorNum, level)], cleared:false,
+    isBoss:true, enemies:[pickBoss(floorNum, level), ...bossMinions], cleared:false,
     known:true, enemyKnown:true, key:'boss',
   };
   const fightRooms = Array.from({length: size - 1}, (_, i) => {
     // The entrance (i===0) is always a single-foe fight — never a trap, never a swarm — so floor 1
     // can't open on a 3-enemy ambush or a blind trap. Every other room may be a trap or a swarm.
     if (i > 0 && pct(TRAP_ROOM_CHANCE)) {
+      // Disguise: pick a non-big fight type and roll fake enemies as if it were that room. The
+      // tile's surface icon/label/desc/enemies all match the disguise; the trap identity hides
+      // behind isTrap + trapAware until the player either spots it or steps on it.
+      const disguisePool = ROOM_TYPES.filter(t => !t.maybeDouble);
+      const disguiseType = disguisePool[Math.floor(Math.random() * disguisePool.length)];
+      const fakeCount    = rollEnemyCount(disguiseType, floorNum);
+      const fakeEnemies  = pickRoomEnemies(level, fakeCount);
+      // Sub-effect roll. status expands to a specific DOT so combinations like spike+poison or
+      // mimic+burn read clearly.
+      const rollEffect = () => {
+        const e = TRAP_EFFECTS[Math.floor(Math.random() * TRAP_EFFECTS.length)];
+        return e === "status" ? TRAP_STATUS_KINDS[Math.floor(Math.random() * TRAP_STATUS_KINDS.length)] : e;
+      };
+      const primaryEffect = rollEffect();
+      let secondaryEffect = null;
+      if (pct(25)) { do { secondaryEffect = rollEffect(); } while (secondaryEffect === primaryEffect); }
+      const trapEffects = secondaryEffect ? [primaryEffect, secondaryEffect] : [primaryEffect];
       return {
         ...TRAP_ROOM,
-        enemies:    [],
-        cleared:    false,
-        known:      known(),
-        trapAware:  enemyKnown(), // spotted the trap? → +5 to the shrug-off
-        key:        `room_${i}`,
+        icon:           disguiseType.icon,
+        label:          disguiseType.label,
+        desc:           disguiseType.desc,
+        disguiseTypeId: disguiseType.id, // for later inspection / save-load idempotence
+        enemies:        fakeEnemies,
+        cleared:        false,
+        known:          known(),
+        trapAware:      enemyKnown(), // independent roll — high WIS reveals the trap
+        enemyKnown:     enemyKnown(), // independent roll — high WIS sees the fake enemies
+        trapEffects,
+        key:            `room_${i}`,
       };
     }
-    const type = ROOM_TYPES[Math.floor(Math.random()*ROOM_TYPES.length)];
-    const enemyCount = i === 0 ? 1 : rollEnemyCount(type);
+    // Entrance always rolls 1 foe (gentle floor opener) — so we must also exclude `big` from its
+    // type pool, otherwise the player can land on a "BIG ROOM" tile with a single enemy (breaking
+    // the "big rooms always have 2+" promise).
+    const typePool = i === 0 ? ROOM_TYPES.filter(t => !t.maybeDouble) : ROOM_TYPES;
+    const type = typePool[Math.floor(Math.random()*typePool.length)];
+    const enemyCount = i === 0 ? 1 : rollEnemyCount(type, floorNum);
     const enemies = pickRoomEnemies(level, enemyCount);
     return {
       ...type,
@@ -988,26 +1166,29 @@ function enemyAttack(p, e, verbose=false) {
   return { dmgToPlayer, counterDmg, results, gotCrit, didPoison, didBurn, didBleed, didStun };
 }
 
-// D&D-style spell attack. Returns the same shape as enemyAttack so attackOne can dispatch uniformly.
-//   DC = 8 + spell.mod + floor(floor/2)
-//   Player rolls d20 + abilityMod(player[spell.ability])
+// Spell attack. Returns the same shape as enemyAttack so attackOne can dispatch uniformly.
+// Unified DC formula (also used by the melee-stun shrug-off):
+//   DC = 8 + spell.mod + floor(waveNumber/2)
+//   Player rolls d20 + abilityMod(player[spell.saveStat])
 //   roll > DC → saved. saved outcome controlled by spell.onSave:
 //     "avoid"  → 0 dmg, no status
 //     "half"   → floor(damage/2), no status
 //     "status" → 0 dmg, status still lands
 //     "both"   → floor(damage/2) + status lands
 //   roll ≤ DC → full damage + status. Bypasses dodge and armor — saves replace both for spells.
+// saveStat = the defender's experience (dodge → ZIP, withstand → GUTS, outsmart → WITS,
+// zen-through → SAVVY, sass-out → CHARM). Falls back to sp.ability for any spell not yet migrated.
 function enemySpellAttack(p, e, floor) {
   const sp = e.spell;
   const results = [];
   let dmgToPlayer = 0, didPoison = false, didBurn = false, didBleed = false, didStun = false;
-  const abilityKey = sp.ability;
-  const playerMod = abilityMod(p[abilityKey] || 10);
+  const saveStat = sp.saveStat || sp.ability;
+  const playerMod = abilityMod(p[saveStat] || 10);
   const dc = 8 + (sp.mod || 0) + Math.floor((floor || 1) / 2);
   const saveRoll = roll(20);
   const saveTotal = saveRoll + playerMod;
   const saved = saveTotal > dc;
-  const stat = STAT_LABEL[abilityKey] || (abilityKey || "wis").slice(0,3).toUpperCase();
+  const stat = STAT_LABEL[saveStat] || (saveStat || "wis").slice(0,3).toUpperCase();
   const signMod = playerMod >= 0 ? `+${playerMod}` : `${playerMod}`;
   const applyStatus = () => {
     if (sp.effect === "poison") didPoison = true;
@@ -1177,20 +1358,31 @@ function FloorMap({ waveNumber, floorRooms, playerPos, revealAll=false, onEnter,
           const isStairs = !!room.descend;
           const isTrap   = !!room.isTrap;
           const done     = room.cleared;
-          const showEnemies = !done && (room.enemyKnown || revealAll) && room.enemies && room.enemies.length > 0;
+          // Trap disguise: a trap tile renders as its disguise (small/bridge/shrine icon, fake
+          // enemies, regular color scheme) UNTIL the player either spots it (trapAware) or trips
+          // it (done). Once revealed, the amber TRAP styling takes over.
+          const trapRevealed = isTrap && (room.trapAware || revealAll || done);
+          const showEnemies = !done && !trapRevealed && (room.enemyKnown || revealAll) && room.enemies && room.enemies.length > 0;
           const bg = isCurrent ? "#1a2010"
                    : isStairs  ? "#08081c"
-                   : done      ? "#0a220a"
+                   : done && !isTrap ? "#0a220a"
                    : isBoss    ? "#220808"
-                   : isTrap    ? "#1f1405"
+                   : trapRevealed ? "#1f1405"
                    : "#101006";
           const border = isCurrent ? "#f8e000"
                        : isStairs  ? "#5060a0"
-                       : done      ? "#50c050"
+                       : done && !isTrap ? "#50c050"
                        : isBoss    ? "#a05050"
-                       : isTrap    ? "#a07020"
+                       : trapRevealed ? "#a07020"
                        : isClickable ? "#806030"
                        : "#3a3010";
+          const tileIcon  = trapRevealed ? "⚠" : room.icon;
+          const tileLabel = trapRevealed
+            ? (done ? "SPRUNG" : "TRAP!")
+            : isStairs ? "STAIRS"
+            : isBoss   ? "BOSS"
+            : done     ? "CLEAR"
+            : room.label.split(" ")[0];
           return (
             <div key={room.key}
                  onClick={isClickable ? () => onEnter(room) : undefined}
@@ -1199,16 +1391,16 @@ function FloorMap({ waveNumber, floorRooms, playerPos, revealAll=false, onEnter,
                           boxShadow:"inset 0 1px 0 rgba(255,255,255,0.06)",
                           position:"relative", cursor:isClickable?"pointer":"default" }}>
               {isCurrent && <div style={{ position:"absolute", top:2, left:3, fontSize:13 }}>{playerEmoji||"🧝"}</div>}
-              <div style={{ fontSize:16, color: isStairs?"#80b8e8":done?"#50c050":isBoss?"#e07070":isTrap?"#e0a040":"#a08a40" }}>
-                {done && !isStairs ? "✓" : room.icon}
+              <div style={{ fontSize:16, color: isStairs?"#80b8e8":done&&!isTrap?"#50c050":isBoss?"#e07070":trapRevealed?"#e0a040":"#a08a40" }}>
+                {done && !isStairs ? (isTrap ? "⚠" : "✓") : tileIcon}
               </div>
               {showEnemies && (
                 <div style={{ fontSize:11, display:"flex", gap:1, justifyContent:"center" }}>
                   {room.enemies.map((e,i) => <span key={i}>{e.emoji}</span>)}
                 </div>
               )}
-              <div style={{ fontSize:11, fontWeight:600, color: isStairs?"#9fd8f5":done?"#93e78d":isBoss?"#e09090":isTrap?"#e0a86c":"#9a7c44", textAlign:"center" }}>
-                {isStairs ? "STAIRS" : isBoss ? "BOSS" : isTrap ? (done ? "SPRUNG" : (room.trapAware||revealAll) ? "TRAP!" : "TRAP") : done ? "CLEAR" : room.label.split(" ")[0]}
+              <div style={{ fontSize:11, fontWeight:600, color: isStairs?"#9fd8f5":done&&!isTrap?"#93e78d":isBoss?"#e09090":trapRevealed?"#e0a86c":"#9a7c44", textAlign:"center" }}>
+                {tileLabel}
               </div>
             </div>
           );
@@ -1285,7 +1477,8 @@ function ItemButtons({ items, onUse, onEquipOffhand, canEquipOffhand, inBattle=t
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0}
+  *{box-sizing:border-box;margin:0;padding:0;min-width:0}
+  html,body{overflow-x:hidden;max-width:100%}
   body{background:#150f07;background-image:radial-gradient(120% 90% at 50% 0%, #2c1f11 0%, #1a1208 52%, #0e0a05 100%);font-family:'Fredoka',system-ui,sans-serif}
   @keyframes blink       {0%,100%{opacity:1}50%{opacity:0}}
   @keyframes shake       {0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
@@ -1633,7 +1826,8 @@ function App() {
     const heroName = draft.name || "Hero";
     setDraft(null);
     // Prologue plays once, right after the hero is forged, then drops into the floor-1 map.
-    setStoryBeat({ ...STORY.prologue(heroName), next: "idle" });
+    // Pass `draft` so STORY.prologue can branch on isIlliterate(draft) — see STORY.md §11.
+    setStoryBeat({ ...STORY.prologue(heroName, draft), next: "idle" });
     setPhase("story");
   }
 
@@ -1653,8 +1847,9 @@ function App() {
     setPlayerPos({col:0, row:0});
     addLog(`⇣ YOU DESCEND TO FLOOR ${nextFloor}.`, "level");
     // Baron heckles over the "dungeon intercom" at floor milestones (5/10/15/20).
-    const beat = STORY.beats[nextFloor];
-    if (beat) { setStoryBeat({ ...beat, next: "idle" }); setPhase("story"); }
+    // Beats are functions of the player so they can branch on literacy — see STORY.md §11.
+    const beatFn = STORY.beats[nextFloor];
+    if (beatFn) { setStoryBeat({ ...beatFn(idlePlayer), next: "idle" }); setPhase("story"); }
     else setPhase("idle");
   }
 
@@ -1686,39 +1881,89 @@ function App() {
   }
 
   // Trap room: a ZIP (dexterity) shrug-off against a floor-scaled target. Spotting the trap first
-  // (trapAware, from the awareness/WIS roll) grants +5. Fail → damage (+ a chance of poison). No
-  // combat — resolves instantly and marks the room cleared. Lethal traps end the run.
+  // (trapAware, from the awareness/WIS roll) grants +5. Fail → apply each rolled sub-effect in
+  // sequence (spike damage / DOT + chip / mimic gold theft / ambush battle). Lethal traps end the
+  // run; ambush punts to startBattle and the room is marked cleared up front so it never re-fires.
   function triggerTrap(room) {
     const ep = idlePlayer;
     const aware = !!room.trapAware || devMode;
     const zipMod = abilityMod(ep.dexterity || 10);
     const awareBonus = aware ? 5 : 0;
-    const target = 10 + Math.floor(waveNumber / 2);
+    // Traps scale HARDER than other shrug-offs (base 10 + full waveNumber, not halved) — they're
+    // unforgiving hazards meant to make the awareness/WIS roll feel mandatory at depth.
+    const target = 10 + waveNumber;
     const rollV = roll(20);
     const total = rollV + zipMod + awareBonus;
     const saved = total >= target;
     const clearRoom = () => setFloorRooms(rooms => rooms.map(r => r.key === room.key ? {...r, cleared:true} : r));
+    // Effect order: damage/status/mimic first, ambush LAST so the player has already eaten the
+    // other stings before the battle queue kicks off.
+    const rawEffects = (room.trapEffects && room.trapEffects.length) ? room.trapEffects : ["spike"];
+    const effects = [...rawEffects].sort((a,b) => (a === "ambush" ? 1 : 0) - (b === "ambush" ? 1 : 0));
+    const effectsLabel = rawEffects.map(e => TRAP_EFFECT_LABEL[e] || (e||"").toUpperCase()).join(" + ");
     const breakdown = `${rollV}${zipMod>=0?'+':''}${zipMod}${awareBonus?`+${awareBonus} SPOTTED`:''} (${total}) vs ${target}`;
-    addLog(`⚠ TRAP! ${aware ? "YOU SPOTTED IT —" : "AMBUSH —"} ZIP SHRUG ${breakdown}`, aware ? "sys" : "warn");
+    addLog(`⚠ TRAP: ${effectsLabel}! ${aware ? "YOU SPOTTED IT —" : "AMBUSH —"} ZIP SHRUG ${breakdown}`, aware ? "sys" : "warn");
     if (saved) {
       addLog("⚠ NIMBLE! YOU SLIP PAST THE TRAP UNHARMED!", "level");
       clearRoom();
       return;
     }
-    // Failed: floor-scaled damage, with a 30% chance of a poison-dart rider.
-    const dmg = roll(6) + Math.floor(waveNumber / 2);
-    const poisons = pct(30);
-    const newHp = Math.max(0, ep.hp - dmg);
-    setPlayer(p => ({...p, hp: Math.max(0, p.hp - dmg)}));
-    setGameStats(s => ({...s, biggestHitTaken: Math.max(s.biggestHitTaken, dmg)}));
-    addLog(`⚠ THE TRAP CATCHES YOU! ${dmg} DMG!`, "warn");
-    if (newHp <= 0) {
-      setPlayer(p => ({...p, hp:0})); saveHighScore(gold); setPhase("lose");
-      addLog("THE TRAP DID YOU IN...", "warn");
-      return;
+    // Failed shrug — apply each rolled effect in sequence. `died` short-circuits remaining effects.
+    let curHp = ep.hp;
+    let died = false;
+    const dealDmg = (dmg, desc) => {
+      if (died) return;
+      const newHp = Math.max(0, curHp - dmg);
+      setPlayer(p => ({...p, hp: Math.max(0, p.hp - dmg)}));
+      setGameStats(s => ({...s, biggestHitTaken: Math.max(s.biggestHitTaken, dmg)}));
+      addLog(`⚠ ${desc} ${dmg} DMG!`, "warn");
+      curHp = newHp;
+      if (newHp <= 0) {
+        died = true;
+        setPlayer(p => ({...p, hp:0})); saveHighScore(gold); setPhase("lose");
+        addLog("THE TRAP DID YOU IN...", "warn");
+      }
+    };
+    const chipForFloor = () => 1 + Math.floor(waveNumber / 8); // 1 on f1–7, 2 on f8–15, 3 on f16–20
+    let ambushed = false;
+    for (const effect of effects) {
+      if (died || ambushed) break;
+      switch (effect) {
+        case "spike": {
+          const dmg = roll(3) + Math.floor(waveNumber / 3); // 1 on f1, 1-3 on f3, scales up
+          dealDmg(dmg, "SPIKES STAB YOU!");
+          break;
+        }
+        case "poison": dealDmg(chipForFloor(), "POISON DARTS!"); if (!died) { setPoison(3); addLog("☠ POISONED 3 TURNS!", "warn"); } break;
+        case "burn":   dealDmg(chipForFloor(), "FIRE BURST!");    if (!died) { setBurn(3);   addLog("🔥 BURNING 3 TURNS!", "warn"); } break;
+        case "bleed":  dealDmg(chipForFloor(), "SHARP SNARE!");   if (!died) { setBleed(3);  addLog("🩸 BLEEDING 3 TURNS!", "warn"); } break;
+        case "mimic": {
+          const stolen = Math.min(gold, Math.max(5, Math.floor(gold * 0.25)));
+          if (stolen > 0) {
+            setGold(g => Math.max(0, g - stolen));
+            addLog(`💰 MIMIC! ${stolen} GOLD VANISHES!`, "warn");
+          } else {
+            addLog("💰 MIMIC! Empty pockets — nothing to steal.", "miss");
+          }
+          break;
+        }
+        case "ambush": {
+          // Spawn a level-appropriate enemy and route through startBattle. The synthetic room has
+          // `enemyKnown:false` which makes startBattle's surprise check (waveNumber >= 3) apply
+          // the +5 SPD ambush bonus automatically — no manual speed pump needed.
+          const ambushEnemy = pickEnemy(level);
+          addLog(`⚠ AMBUSH! A ${ambushEnemy.name} bursts from the walls!`, "warn");
+          clearRoom();
+          ambushed = true;
+          startBattle({
+            id:"trap-ambush", isTrap:false, label:"AMBUSH",
+            enemies:[ambushEnemy], enemyKnown:false, key:room.key,
+          });
+          break;
+        }
+      }
     }
-    if (poisons) { setPoison(3); addLog("☠ POISON DARTS! POISONED 3 TURNS!", "warn"); }
-    clearRoom();
+    if (!died && !ambushed) clearRoom();
   }
 
   function startBattle(room) {
@@ -1780,10 +2025,11 @@ function App() {
   }
 
   // ── Initiative-based round system ───────────────────────────────────────────
-  // Every round: tick statuses + flee checks, then roll initiative (speed + d10) for the player and
-  // each living enemy, sort high→low (player wins ties), and walk the queue one actor at a time.
-  // The player's slot pauses for input (phase "player"); enemy slots auto-resolve. When the queue is
-  // exhausted the next round begins with a fresh initiative roll. State threads through `combatRef`.
+  // Top of round: flee checks, then roll initiative (speed + d10) for the player and each living
+  // enemy, sort high→low (player wins ties), and walk the queue one actor at a time. The player's
+  // slot pauses for input (phase "player"); enemy slots auto-resolve. When the queue exhausts,
+  // `endRound` ticks DOTs + Vital Surge — including on the round that lands the killing blow, so
+  // burn/poison/regen never get skipped by a mid-queue victory. State threads through `combatRef`.
   const rollInit = (speed) => (speed || 10) + roll(10);
 
   function beginRound(round, curP, curEnemies, curTempHp) {
@@ -1792,43 +2038,6 @@ function App() {
       let p = curP;
       let es = curEnemies.map(e => e ? {...e} : e);
       let tHp = curTempHp;
-
-      // --- Status ticks (enemy DOTs, then player's, once per round) ---
-      for (let i = 0; i < es.length; i++) {
-        let e = es[i];
-        if (!e || e.hp <= 0) continue;
-        if ((e.poison||0) > 0) {
-          const left = e.poison - 1;
-          addLog(`☠ ${e.name} POISON! 1 DMG${left>0?` (${left} LEFT)`:" CURED!"}`, "level");
-          e = { ...e, hp: Math.max(0, e.hp - 1), poison: left };
-          if (e.hp === 0) addLog(`${e.name} SUCCUMBS TO POISON!`, "gold");
-        }
-        if (e.hp > 0 && (e.burn||0) > 0) {
-          const left = e.burn - 1;
-          addLog(`🔥 ${e.name} BURN! 2 DMG${left>0?` (${left} LEFT)`:" FADED!"}`, "level");
-          e = { ...e, hp: Math.max(0, e.hp - 2), burn: left };
-          if (e.hp === 0) addLog(`${e.name} IS CONSUMED BY FLAMES!`, "gold");
-        }
-        if (e.hp > 0 && (e.bleed||0) > 0) {
-          const left = e.bleed - 1;
-          e = { ...e, bleed: Math.max(0, left) };
-          if (left <= 0) addLog(`🩸 ${e.name} BLEED FADED.`, "miss");
-        }
-        es[i] = e;
-      }
-      if (poison > 0) {
-        const left = poison - 1; setPoison(left);
-        addLog(`☠ POISON! 1 DMG!${left>0?` (${left} LEFT)`:" CURED!"}`, "warn");
-        if (p.hp - 1 <= 0) { setPlayer(pr=>({...pr,hp:0})); setEnemies(es); saveHighScore(gold); setPhase("lose"); addLog("POISON CLAIMED YOUR LIFE...","warn"); return; }
-        p = {...p, hp: p.hp - 1};
-      }
-      if (burn > 0) {
-        const left = burn - 1; setBurn(left);
-        addLog(`🔥 BURN! 2 DMG!${left>0?` (${left} LEFT)`:" FADED!"}`, "warn");
-        if (p.hp - 2 <= 0) { setPlayer(pr=>({...pr,hp:0})); setEnemies(es); saveHighScore(gold); setPhase("lose"); addLog("THE FLAMES TOOK YOU...","warn"); return; }
-        p = {...p, hp: p.hp - 2};
-      }
-      if (bleed > 0) { const left = bleed - 1; setBleed(left); if (left <= 0) addLog("🩸 BLEED FADED.", "miss"); }
 
       // --- Flee checks (low-HP archers may bail for half reward) ---
       for (let i = 0; i < es.length; i++) {
@@ -1863,6 +2072,89 @@ function App() {
     }, 600);
   }
 
+  // End-of-round wrap-up — enemy DOTs (poison, burn, bleed), player DOTs, then the Vital Surge regen.
+  // Called from runQueueFrom (queue exhausted) AND from handleAction / handleCastSpell when the player
+  // lands the killing blow mid-queue, so the round still resolves cleanly before victory transitions.
+  // Player DOT damage can still kill on the winning round — death overrides the win.
+  // onDone(p, es, tHp, willVictory, playerDied)
+  function endRound(p, es, tHp, onDone) {
+    let p2 = p;
+    let es2 = es.map(e => e ? {...e} : e);
+
+    // --- Enemy DOTs (poison, burn, bleed) ---
+    for (let i = 0; i < es2.length; i++) {
+      let e = es2[i];
+      if (!e || e.hp <= 0) continue;
+      if ((e.poison||0) > 0) {
+        const left = e.poison - 1;
+        addLog(`☠ ${e.name} POISON! 1 DMG${left>0?` (${left} LEFT)`:" CURED!"}`, "level");
+        e = { ...e, hp: Math.max(0, e.hp - 1), poison: left };
+        if (e.hp === 0) addLog(`${e.name} SUCCUMBS TO POISON!`, "gold");
+      }
+      if (e.hp > 0 && (e.burn||0) > 0) {
+        const left = e.burn - 1;
+        addLog(`🔥 ${e.name} BURN! 2 DMG${left>0?` (${left} LEFT)`:" FADED!"}`, "level");
+        e = { ...e, hp: Math.max(0, e.hp - 2), burn: left };
+        if (e.hp === 0) addLog(`${e.name} IS CONSUMED BY FLAMES!`, "gold");
+      }
+      if (e.hp > 0 && (e.bleed||0) > 0) {
+        const left = e.bleed - 1;
+        e = { ...e, bleed: Math.max(0, left) };
+        if (left <= 0) addLog(`🩸 ${e.name} BLEED FADED.`, "miss");
+      }
+      es2[i] = e;
+    }
+
+    // --- Player DOTs — death overrides victory; you can still fall to a tick on the winning round. ---
+    if (poison > 0) {
+      const left = poison - 1; setPoison(left);
+      addLog(`☠ POISON! 1 DMG!${left>0?` (${left} LEFT)`:" CURED!"}`, "warn");
+      if (p2.hp - 1 <= 0) {
+        setPlayer(pr=>({...pr,hp:0})); setEnemies(es2); saveHighScore(gold); setPhase("lose");
+        addLog("POISON CLAIMED YOUR LIFE...","warn");
+        onDone(p2, es2, tHp, false, true);
+        return;
+      }
+      p2 = {...p2, hp: p2.hp - 1};
+    }
+    if (burn > 0) {
+      const left = burn - 1; setBurn(left);
+      addLog(`🔥 BURN! 2 DMG!${left>0?` (${left} LEFT)`:" FADED!"}`, "warn");
+      if (p2.hp - 2 <= 0) {
+        setPlayer(pr=>({...pr,hp:0})); setEnemies(es2); saveHighScore(gold); setPhase("lose");
+        addLog("THE FLAMES TOOK YOU...","warn");
+        onDone(p2, es2, tHp, false, true);
+        return;
+      }
+      p2 = {...p2, hp: p2.hp - 2};
+    }
+    if (bleed > 0) { const left = bleed - 1; setBleed(left); if (left <= 0) addLog("🩸 BLEED FADED.", "miss"); }
+
+    // --- Vital Surge (CON-perk) — round-end regen, scales off SAVVY like all healing.
+    // Sage's Reservoir (WIS-perk) stacks: each Vital Surge tick also grants wisMod Temp HP,
+    // capped at maxHp — mirrors the heal-item Reservoir path. ---
+    if (player.conPerk === "vital" && p2.hp > 0 && p2.hp < p2.maxHp) {
+      const wisMod = abilityMod(p2.wisdom);
+      const regen = Math.max(1, 1 + wisMod);
+      const newHp = Math.min(p2.hp + regen, p2.maxHp);
+      const actual = newHp - p2.hp;
+      p2 = {...p2, hp: newHp};
+      addLog(`✦ VITAL SURGE — +${actual} HP`, "level");
+      if (player.wisPerk === "reservoir" && wisMod > 0) {
+        const newTempHp = Math.min(p2.maxHp, tHp + wisMod);
+        const tmpGain = newTempHp - tHp;
+        if (tmpGain > 0) { tHp = newTempHp; addLog(`✦ SAGE'S RESERVOIR! +${tmpGain} TEMP HP`, "level"); }
+      }
+    }
+
+    setPlayer(pr => ({...pr, hp: p2.hp}));
+    setEnemies(es2);
+    setTempHp(tHp);
+
+    const willVictory = es2.every(en => !en || en.hp <= 0);
+    onDone(p2, es2, tHp, willVictory, false);
+  }
+
   // Walk the initiative queue from index `i`. Enemy slots resolve and chain on a timer; the player's
   // slot commits state and pauses (phase "player") so the action handlers can resume via resumeAfterPlayer.
   function runQueueFrom(i, curP, curEnemies, curTempHp) {
@@ -1877,18 +2169,14 @@ function App() {
     }
 
     if (i >= queue.length) {
-      // Round over. Vital Surge regen, then re-roll and go again. Like all healing it scales off
-      // SAVVY: regen = 1 + savvyMod, floored at 1 (it's an invested perk, so it always does something).
-      if (player.conPerk === "vital" && p.hp > 0 && p.hp < p.maxHp) {
-        const regen = Math.max(1, 1 + abilityMod(p.wisdom));
-        const newHp = Math.min(p.hp + regen, p.maxHp);
-        const actual = newHp - p.hp;
-        p = {...p, hp: newHp};
-        setPlayer(pr => ({...pr, hp: newHp}));
-        addLog(`✦ VITAL SURGE — +${actual} HP`, "level");
-      }
-      combatRef.current = { ...combatRef.current, curP: p, curTempHp: tHp };
-      beginRound(round + 1, p, es, tHp);
+      // Round over — endRound ticks DOTs + Vital Surge, then chains to the next round (or to
+      // victory/defeat if the wrap-up tipped the fight either way).
+      endRound(p, es, tHp, (np, nes, ntHp, willVictory, playerDied) => {
+        if (playerDied) return; // endRound already set the lose phase
+        if (willVictory) { resolveVictory(nes); return; }
+        combatRef.current = { ...combatRef.current, curP: np, curTempHp: ntHp };
+        beginRound(round + 1, np, nes, ntHp);
+      });
       return;
     }
 
@@ -1989,7 +2277,24 @@ function App() {
     }
     if (didBurn)  { setBurn(3);  addLog(burn>0?"🔥 BURN REFRESHED!":"🔥 BURNING! 3 TURNS!", "warn"); }
     if (didBleed) { setBleed(3); addLog(bleed>0?"🩸 BLEED REFRESHED!":"🩸 BLEEDING! 3 TURNS! (+50% DMG)", "warn"); }
-    if (didStun)  { setStun(1);  addLog("💫 STUNNED! YOUR NEXT TURN IS SKIPPED!", "warn"); }
+    if (didStun) {
+      // Stun shrug-off — unified DC: 8 + attacker's MIGHT mod (melee → MIGHT) + floor(waveNumber/2).
+      // Player rolls d20 + GUTS mod; pass = no stun. Only stun gets a defense roll; other status
+      // procs (poison/burn/bleed) remain guaranteed because chained stun-lock is the worst failure.
+      const gutMod = abilityMod(p.constitution || 10);
+      const enemyMightMod = abilityMod(e.attrs?.strength || 10);
+      const dc = 8 + enemyMightMod + Math.floor((waveNumber || 1) / 2);
+      const rollV = roll(20);
+      const total = rollV + gutMod;
+      const saved = total >= dc;
+      const sign = gutMod >= 0 ? `+${gutMod}` : `${gutMod}`;
+      if (saved) {
+        addLog(`💫 GUT SHRUG ${rollV}${sign} (${total}) vs ${dc} → SHAKE IT OFF!`, "level");
+      } else {
+        setStun(1);
+        addLog(`💫 GUT SHRUG ${rollV}${sign} (${total}) vs ${dc} → STUNNED! YOUR NEXT TURN IS SKIPPED!`, "warn");
+      }
+    }
 
     if (dmgToPlayer > 0) setGameStats(s=>({...s,biggestHitTaken:Math.max(s.biggestHitTaken,dmgToPlayer)}));
 
@@ -2114,8 +2419,14 @@ function App() {
       }
     }
 
-    // Victory check — all enemies must be down.
-    if (newEnemies.every(e => !e || e.hp <= 0)) { resolveVictory(newEnemies); return; }
+    // Victory check — all enemies must be down. Run end-of-round first so Vital Surge regen and
+    // any active player DOTs still resolve on the winning round.
+    if (newEnemies.every(e => !e || e.hp <= 0)) {
+      endRound(effectivePlayer, newEnemies, tempHp, (_p, nes, _t, _v, playerDied) => {
+        if (!playerDied) resolveVictory(nes);
+      });
+      return;
+    }
     resumeAfterPlayer(effectivePlayer, newEnemies);
   }
 
@@ -2139,20 +2450,39 @@ function App() {
     };
 
     // Heal spells: target self. Roll the heal die + statBonus + levelBonus. No save.
+    // Flags: cureOne (single status), cureAll (full cleanse), tempHp (BUBBLE — route to tempHp instead of HP).
     if (spell.type === "heal") {
       const roll = rollSpellDie();
-      const healAmount = Math.max(0, roll + statBonus + levelBonus);
-      const newHp = Math.min(ep.maxHp, player.hp + healAmount);
+      const amount = Math.max(0, roll + statBonus + levelBonus);
+      const formula = `${roll}${statBonus>=0?'+':''}${statBonus}${levelBonus>0?`+${levelBonus}`:''}`;
+
+      // BUBBLE-style: temp HP shield. Stacks with existing tempHp; capped at maxHp like the Reservoir perk.
+      if (spell.tempHp) {
+        const newTempHp = Math.min(ep.maxHp, tempHp + amount);
+        const actualGain = newTempHp - tempHp;
+        setTempHp(newTempHp);
+        if (actualGain > 0) addLog(`${spell.emoji} +${actualGain} TEMP HP! (${formula})`, "level");
+        resumeAfterPlayer(ep, enemies);
+        return;
+      }
+
+      // Regular heal.
+      const newHp = Math.min(ep.maxHp, player.hp + amount);
       const actualHeal = newHp - player.hp;
       const updatedPlayer = {...player, hp: newHp};
       setPlayer(updatedPlayer);
-      const formula = `${roll}${statBonus>=0?'+':''}${statBonus}${levelBonus>0?`+${levelBonus}`:''}`;
       if (actualHeal > 0) addLog(`${spell.emoji} +${actualHeal} HP! (${formula})`, "level");
       if (spell.cureOne) {
         if (poison > 0)      { setPoison(0); addLog("☠ POISON CURED!", "level"); }
         else if (burn > 0)   { setBurn(0);   addLog("🔥 BURN CURED!", "level"); }
         else if (bleed > 0)  { setBleed(0);  addLog("🩸 BLEED CURED!", "level"); }
         else if (stun > 0)   { setStun(0);   addLog("💫 STUN CLEARED!", "level"); }
+      }
+      if (spell.cureAll) {
+        if (poison > 0) { setPoison(0); addLog("☠ POISON CURED!", "level"); }
+        if (burn > 0)   { setBurn(0);   addLog("🔥 BURN CURED!", "level"); }
+        if (bleed > 0)  { setBleed(0);  addLog("🩸 BLEED CURED!", "level"); }
+        if (stun > 0)   { setStun(0);   addLog("💫 STUN CLEARED!", "level"); }
       }
       resumeAfterPlayer(getEffectivePlayer(updatedPlayer, equipment, tempBuffs), enemies);
       return;
@@ -2234,7 +2564,12 @@ function App() {
         addLog(`▶ ${target.name} DOWN! NOW TARGETING ${newEnemies[nextAlive].name}.`, "sys");
       }
     }
-    if (newEnemies.every(e => !e || e.hp <= 0)) { resolveVictory(newEnemies); return; }
+    if (newEnemies.every(e => !e || e.hp <= 0)) {
+      endRound(ep, newEnemies, tempHp, (_p, nes, _t, _v, playerDied) => {
+        if (!playerDied) resolveVictory(nes);
+      });
+      return;
+    }
     resumeAfterPlayer(ep, newEnemies);
   }
 
@@ -2534,7 +2869,7 @@ function App() {
           </div>
         </div>
       )}
-      <div style={{ minHeight:"100vh", background:"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'Fredoka', system-ui, sans-serif" }}>
+      <div style={{ minHeight:"100vh", width:"100%", maxWidth:"100vw", background:"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"clamp(10px, 3vw, 24px)", fontFamily:"'Fredoka', system-ui, sans-serif" }}>
 
         <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
           <div style={{ color:"#f8e000", fontSize:15, letterSpacing:"0.12em", textShadow:"2px 2px #000, 0 0 18px rgba(248,224,0,0.35)" }}>✦ DUNGEON QUEST ✦</div>
@@ -2558,16 +2893,16 @@ function App() {
             </div>
             <div style={{ color:"#a88a52", fontSize:11, marginBottom:14, letterSpacing:"0.05em" }}>FLOOR {waveNumber} · ROOMS CLEARED {clearedFightRooms}/{totalFightRooms}</div>
 
-            <div style={{ width:"100%", maxWidth:560, height:10, background:"#14100a", border:"2px solid #4a371d", borderRadius:8, marginBottom:18, overflow:"hidden", boxShadow:"inset 0 2px 4px rgba(0,0,0,0.5)" }}>
+            <div style={{ width:"100%", maxWidth:920, height:10, background:"#14100a", border:"2px solid #4a371d", borderRadius:8, marginBottom:18, overflow:"hidden", boxShadow:"inset 0 2px 4px rgba(0,0,0,0.5)" }}>
               <div style={{ width:`${clamp((xp/XP_NEEDED)*100,0,100)}%`, height:"100%", background:"linear-gradient(180deg,#9fe0ff,#5aa6e0)", borderRadius:6, transition:"width 0.5s" }} />
             </div>
           </>
         )}
 
-        <div style={{ width:"100%", maxWidth:560 }}>
+        <div style={{ width:"100%", maxWidth:920 }}>
 
           {phase==="title" && (
-            <TileBox highlight style={{ textAlign:"center", padding:32 }}>
+            <TileBox highlight style={{ textAlign:"center", padding:"clamp(16px, 4vw, 32px)" }}>
               <div style={{ fontSize:38, marginBottom:18 }}>🧝⚔️🏰</div>
               <div style={{ color:"#b8a840", fontSize:10, marginBottom:8, lineHeight:2.4 }}>BARON VON BACON<br />WANTS YOUR TOWN</div>
               <div style={{ color:"#d9bd86", fontSize:11, marginBottom:22, lineHeight:2 }}>
@@ -2774,7 +3109,7 @@ function App() {
                     </div>
                   </div>
                   <div style={{ color:"#242408", fontSize:10, paddingBottom:22, flexShrink:0 }}>⚡</div>
-                  <div style={{ flex:1, display:"flex", gap:8, justifyContent:"center", alignItems:"flex-end" }}>
+                  <div style={{ flex:1, display:"flex", gap: enemies.length>=5 ? 4 : 8, justifyContent:"center", alignItems:"flex-end", flexWrap:"wrap" }}>
                     {enemies.map((e, i) => {
                       if (!e) return null;
                       const isDead   = e.hp <= 0;
@@ -2784,21 +3119,27 @@ function App() {
                       const onClick = (!isDead && phase === "player" && i !== targetIdx)
                         ? () => { setTargetIdx(i); addLog(`▶ NOW TARGETING ${e.name}.`, "sys"); }
                         : undefined;
+                      // Crowd compression — at 4+ foes the row shrinks emoji + divider so the lineup
+                      // doesn't blow past the arena width. Boss still gets the bigger sprite.
+                      const compact      = enemies.length >= 4;
+                      const emojiSize    = e.isBoss ? 54 : compact ? 32 : 44;
+                      const dividerWidth = e.isBoss ? 56 : compact ? 38 : 56;
+                      const cellPad      = compact ? "3px 4px" : "4px 6px";
                       return (
                         <div key={i} onClick={onClick}
                              style={{
                                textAlign:"center",
                                cursor: onClick ? "pointer" : "default",
                                opacity: isDead ? 0.3 : 1,
-                               padding:"4px 6px",
+                               padding:cellPad,
                                border: isTarget ? "2px solid #f8e000" : "2px solid transparent",
                                borderRadius:6,
                                background: isTarget ? "rgba(248,224,0,0.06)" : "transparent",
                              }}>
-                          <div style={{ fontSize:e.isBoss?54:44, lineHeight:1, display:"inline-block", animation:anim }}>
+                          <div style={{ fontSize:emojiSize, lineHeight:1, display:"inline-block", animation:anim }}>
                             {isDead ? "💀" : e.emoji}
                           </div>
-                          <div style={{ height:2, background:"#1c2210", margin:"6px auto 0", width:56 }} />
+                          <div style={{ height:2, background:"#1c2210", margin:"6px auto 0", width:dividerWidth }} />
                           <div style={{ fontSize:9, color:e.isBoss?"#6a5000":"#3a2010", marginTop:4 }}>
                             {e.name}
                             {e.immuneToCrit && <span style={{color:"#80b8e8"}}> 🛡</span>}
@@ -2876,7 +3217,7 @@ function App() {
                           {e.immuneToCrit && !isDead && <div style={{ fontSize:10, color:"#80b8e8", marginBottom:4 }}>🛡 CRIT IMMUNE</div>}
                           {e.poisonOnHit  && !isDead && <div style={{ fontSize:10, color:"#80d050", marginBottom:4 }}>☠ POISONS ON HIT</div>}
                           {e.burnsOnHit   && !isDead && <div style={{ fontSize:10, color:"#e08020", marginBottom:4 }}>🔥 BURNS ON HIT</div>}
-                          {e.stunsOnHit   && !isDead && <div style={{ fontSize:10, color:"#80d0f8", marginBottom:4 }}>💫 STUNS ON HIT (30%)</div>}
+                          {e.stunsOnHit   && !isDead && <div style={{ fontSize:10, color:"#80d0f8", marginBottom:4 }}>💫 STUNS ON HIT (30% · GUT SHRUG)</div>}
                           {e.healsAllies  && !isDead && <div style={{ fontSize:10, color:"#f880e0", marginBottom:4 }}>✦ HEALS ALLIES · KILL FIRST</div>}
                           {e.enraged      && !isDead && <div style={{ fontSize:10, color:"#e04040", marginBottom:4 }}>⚡ ENRAGED! ATK {e.attack}</div>}
                           {!isDead && <Hearts hp={e.hp} maxHp={e.maxHp} />}
@@ -2902,11 +3243,8 @@ function App() {
                 </TileBox>
               </div>
 
-              <TileBox style={{ marginBottom:14 }}>
-                <div ref={logRef} style={{ height:130, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
-                  {log.map((e,i)=><div key={i} style={{ fontSize:9, color:LOG_COLORS[e.type]||"#b8a840", lineHeight:1.9 }}>▷ {e.text}</div>)}
-                </div>
-              </TileBox>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:14, alignItems:"flex-start", marginBottom:14 }}>
+                <div style={{ flex:"1 1 320px", minWidth:0, display:"flex", flexDirection:"column", gap:14 }}>
 
               {phase==="perk" && perkOpts.length>0 && (
                 <TileBox highlight style={{ padding:18 }}>
@@ -3102,9 +3440,19 @@ function App() {
 
               {phase==="enemy" && (
                 <TileBox style={{ textAlign:"center", padding:16 }}>
-                  <div style={{ color:"#e07050", fontSize:10, animation:"blink 0.6s infinite" }}>ENEMY TURN...</div>
+                  <div style={{ color:"#e07050", fontSize:11, animation:"blink 0.6s infinite" }}>ENEMY TURN...</div>
                 </TileBox>
               )}
+                </div>
+                <div style={{ flex:"1 1 320px", minWidth:0 }}>
+                  <TileBox>
+                    <div style={{ fontSize:10, color:"#caa86a", letterSpacing:"0.06em", marginBottom:8, fontWeight:600 }}>📜 COMBAT LOG</div>
+                    <div ref={logRef} style={{ height:300, overflowY:"auto", display:"flex", flexDirection:"column", gap:5 }}>
+                      {log.map((e,i)=><div key={i} style={{ fontSize:12, color:LOG_COLORS[e.type]||"#b8a840", lineHeight:1.55 }}>▷ {e.text}</div>)}
+                    </div>
+                  </TileBox>
+                </div>
+              </div>
             </>
           )}
 
@@ -3220,28 +3568,35 @@ function App() {
               {(() => {
                 const here = floorRooms.find(r => r.pos && r.pos.col === playerPos.col && r.pos.row === playerPos.row);
                 if (!here) return null;
-                const showEnemies = (here.enemyKnown || devMode) && here.enemies && here.enemies.length > 0;
+                // Trap disguise: same rule as the floor map — show the disguise unless we've
+                // spotted (trapAware), tripped (cleared), or dev-revealed it.
+                const trapRevealed = here.isTrap && (here.trapAware || devMode || here.cleared);
+                const effectsLabel = (here.trapEffects || []).map(e => TRAP_EFFECT_LABEL[e] || (e||"").toUpperCase()).join(" + ");
+                const showEnemies = !trapRevealed && (here.enemyKnown || devMode) && here.enemies && here.enemies.length > 0;
                 const preview = showEnemies
                   ? (here.enemies.length === 1
                       ? `${here.enemies[0].emoji} ${here.enemies[0].name}`
                       : here.enemies.map(e => `${e.emoji} ${e.name}`).join(" + "))
                   : null;
-                const trapSpotted = here.isTrap && (here.trapAware || devMode);
+                const hereIcon  = trapRevealed ? "⚠" : here.icon;
+                const hereLabel = trapRevealed
+                  ? (here.cleared ? "TRAP ROOM (SPRUNG)" : `TRAP ROOM — ${effectsLabel}`)
+                  : `${here.label}${here.cleared ? " (CLEARED)" : ""}`;
                 const desc = here.descend ? "STAIRS DOWN · DESCEND TO NEXT FLOOR"
                            : (here.isTrap && here.cleared) ? "TRAP SPRUNG · YOU MAY MOVE ON"
                            : here.cleared ? "ROOM IS EMPTY · YOU MAY MOVE ON"
-                           : here.isTrap  ? (trapSpotted ? "TRAP SPOTTED! ZIP SHRUG-OFF GETS +5" : "SOMETHING'S RIGGED · ZIP SHRUG-OFF TO DODGE")
+                           : trapRevealed ? `TRAP SPOTTED — ${effectsLabel}! ZIP SHRUG-OFF GETS +5`
                            : here.isBoss  ? "BOSS WAITS BEYOND"
                            : here.desc;
                 return (
                   <div style={{ background:"linear-gradient(165deg,#1b130a,#100b06)", border:"2px solid #4a371d", borderRadius:12, padding:"11px 13px", marginBottom:14, textAlign:"left", boxShadow:"inset 0 2px 0 rgba(255,224,160,0.06)" }}>
-                    <div style={{ fontSize:13, color:"#f8e000", fontWeight:600, marginBottom:8 }}>{here.icon} HERE: {here.label}{here.cleared?(here.isTrap?" (SPRUNG)":" (CLEARED)"):""}</div>
-                    <div style={{ fontSize:12, color: here.isTrap&&!here.cleared?"#e0a040":"#a3c79f", lineHeight:1.6 }}>{desc}</div>
+                    <div style={{ fontSize:13, color:"#f8e000", fontWeight:600, marginBottom:8 }}>{hereIcon} HERE: {hereLabel}</div>
+                    <div style={{ fontSize:12, color: trapRevealed&&!here.cleared?"#e0a040":"#a3c79f", lineHeight:1.6 }}>{desc}</div>
                     {preview && <div style={{ fontSize:11, color:"#e08020", marginTop:6 }}>⚠ {preview}</div>}
                     {!here.cleared && !here.descend && (
                       <div style={{ marginTop:8 }}>
-                        <Btn onClick={()=>handleRoomEnter(here)} variant={here.isBoss?"attack":here.isTrap?"flee":"neutral"}>
-                          {here.isBoss?"⚔ FIGHT THE BOSS":here.isTrap?"⚠ RISK THE TRAP":"⚔ ENGAGE"}
+                        <Btn onClick={()=>handleRoomEnter(here)} variant={here.isBoss?"attack":trapRevealed?"flee":"neutral"}>
+                          {here.isBoss?"⚔ FIGHT THE BOSS":trapRevealed?"⚠ RISK THE TRAP":"⚔ ENGAGE"}
                         </Btn>
                       </div>
                     )}
@@ -3262,17 +3617,6 @@ function App() {
                 </div>
               )}
 
-              <div style={{ color:"#d9bd86", fontSize:12, marginBottom:16, lineHeight:1.9 }}>
-                HP {idlePlayer.hp}/{idlePlayer.maxHp} · ARM -{idlePlayer.armor} · ATK {dmgRange(idlePlayer.atkDmg,idlePlayer.dieIdx)} · SPD {idlePlayer.speed}<br />
-                HIT {idlePlayer.hitChance}% · DOD {idlePlayer.dodgeChance}% · CRT {idlePlayer.critChance}% · ☠ RES {idlePlayer.poisonResist}%<br />
-                {statLine(roomPlayer)}
-                {player.counterChance>0 && <><br />CTR {player.counterChance}%</>}
-                {player.doubleStrikeChance>0 && <><br /><span style={{color:"#e0a040"}}>⚔⚔ DOUBLE STRIKE {player.doubleStrikeChance}%</span></>}
-                {player.tripleStrikeChance>0 && <><br /><span style={{color:"#f8c840"}}>⚔⚔⚔ TRIPLE STRIKE {player.tripleStrikeChance}% (AFTER A DOUBLE)</span></>}
-                {player.ironWill    && <><br /><span style={{color:"#80d0f8"}}>🛡 IRON WILL READY</span></>}
-                {player.armorPierce && <><br /><span style={{color:"#e080f8"}}>💥 ARMOR PIERCE READY</span></>}
-                {player.dualWield   && <><br /><span style={{color:"#f8c840"}}>⚔⚔ DUAL WIELD ENABLED</span></>}
-              </div>
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                 {inventory.length>0 && !selectingItem && (
                   <Btn onClick={()=>setSelectingItem(true)} variant="shop">🎒 USE ITEM  ({inventory.reduce((s,i)=>s+(i.count||1),0)} in bag)</Btn>
@@ -3287,11 +3631,6 @@ function App() {
                 <Btn onClick={()=>{ setSelectedSlot(null); setEquipOpen(true); maybeHint("gear"); }} variant="stat">🧍 VIEW GEAR</Btn>
                 <Btn onClick={enterRest} variant="flee">🏕  MAKE CAMP  (HEAL ALL · CLEAR STATUS)</Btn>
               </div>
-              <div style={{ marginTop:18, display:"flex", justifyContent:"center" }}>
-                <BodyLayout equip={equipment} cellSize={32} selected={null}
-                            onSelect={k=>{ setSelectedSlot(k); setEquipOpen(true); maybeHint("gear"); }} />
-              </div>
-
             </TileBox>
           )}
 
@@ -3304,7 +3643,7 @@ function App() {
   // belt-and-suspenders escape so the player can always dismiss regardless of scroll position.
   <div style={{ position:"fixed", inset:0, background:"rgba(4,3,1,0.92)", zIndex:200, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:16, overflowY:"auto", WebkitOverflowScrolling:"touch" }}
        onClick={e=>{ if(e.target===e.currentTarget) setEquipOpen(false); }}>
-    <div style={{ width:"100%", maxWidth:580, position:"relative" }}>
+    <div style={{ width:"100%", maxWidth:920, position:"relative" }}>
       <button onClick={()=>setEquipOpen(false)}
               aria-label="Close gear"
               style={{ position:"absolute", top:8, right:8, zIndex:1, width:38, height:38, borderRadius:"50%",
